@@ -41,15 +41,15 @@ export function FeatureSection({
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: "-80px" }}
             transition={{ duration: 0.6 }}
-            className="relative w-full max-w-[520px] mx-auto"
+            className="relative w-full max-w-[560px] mx-auto"
           >
-            <div className="relative aspect-[4/3] rounded-4xl overflow-hidden bg-gradient-to-br from-lumen-purple-900/60 to-lumen-purple-700/40 shadow-purple-glow ring-1 ring-lumen-purple-500/40">
+            <div className="relative aspect-[5/4]">
               <Image
                 src={imageSrc}
                 alt={imageAlt}
                 fill
-                sizes="(max-width: 1024px) 90vw, 520px"
-                className="object-cover"
+                sizes="(max-width: 1024px) 90vw, 560px"
+                className="object-contain"
               />
             </div>
           </motion.div>

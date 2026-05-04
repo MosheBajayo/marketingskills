@@ -50,6 +50,7 @@ export const PLANS: Plan[] = [
     name: "METABOLISM RESET",
     duration: "3 Month Track",
     price: "$249",
+    saving: null,
     info: "",
     description: "",
     link: "#",
@@ -60,16 +61,18 @@ export const PLANS: Plan[] = [
     name: "METABOLISM BOOSTER",
     duration: "6 Month Track",
     price: "$299",
+    saving: "Save $90",
     info: "",
     description: "",
     link: "#",
     badge: null,
-    highlighted: true,
+    highlighted: false,
   },
   {
     name: "METABOLISM OPTIMIZER",
     duration: "12 Month Track",
     price: "$349",
+    saving: "Save $150",
     info: "",
     description: "",
     link: "#",
@@ -108,7 +111,7 @@ export const INTEGRATIONS = [
 
 export const TRUST_BADGES = [
   {
-    title: "60-day Returns",
+    title: "30-Day Returns",
     description: "",
     icon: "RotateCcw",
   },

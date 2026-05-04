@@ -38,30 +38,9 @@ export function VideoBlock({
           transition={{ duration: 0.6 }}
           className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center"
         >
-          <div>
-            <h2
-              className={cn(
-                "font-display text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight",
-                isDark ? "text-white" : "text-lumen-dark",
-              )}
-            >
-              {title}
-            </h2>
-            {body ? (
-              <p
-                className={cn(
-                  "mt-4 text-base sm:text-lg leading-relaxed",
-                  isDark ? "text-white/80" : "text-lumen-gray",
-                )}
-              >
-                {body}
-              </p>
-            ) : null}
-          </div>
-
           <button
             type="button"
-            className="group relative aspect-video w-full overflow-hidden rounded-3xl bg-lumen-purple-100 shadow-card-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-lumen-purple-400"
+            className="group relative aspect-video w-full overflow-hidden rounded-3xl bg-lumen-purple-100 shadow-card-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-lumen-purple-400 order-2 lg:order-1"
             aria-label="Play video"
           >
             {thumbnailSrc ? (
@@ -88,6 +67,27 @@ export function VideoBlock({
               </span>
             </span>
           </button>
+
+          <div className="order-1 lg:order-2">
+            <h2
+              className={cn(
+                "font-display text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight",
+                isDark ? "text-white" : "text-lumen-dark",
+              )}
+            >
+              {title}
+            </h2>
+            {body ? (
+              <p
+                className={cn(
+                  "mt-4 text-base sm:text-lg leading-relaxed",
+                  isDark ? "text-white/80" : "text-lumen-gray",
+                )}
+              >
+                {body}
+              </p>
+            ) : null}
+          </div>
         </motion.div>
       </Container>
     </section>

@@ -13,9 +13,9 @@ const ICONS: Record<string, LucideIcon> = {
 
 export function TrustRow() {
   return (
-    <section className="py-12 sm:py-16 bg-lumen-night border-y border-white/10 text-white">
-      <Container size="xl">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+    <section className="bg-lumen-night text-white">
+      <Container size="xl" className="py-8 sm:py-10">
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-white/10">
           {TRUST_BADGES.map((badge, i) => {
             const Icon = ICONS[badge.icon];
             return (
@@ -25,14 +25,14 @@ export function TrustRow() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-50px" }}
                 transition={{ duration: 0.5, delay: i * 0.08 }}
-                className="flex flex-col items-center justify-center text-center gap-3"
+                className="flex flex-col items-center justify-center text-center gap-3 py-4 px-4"
               >
-                <div className="flex h-12 w-12 items-center justify-center text-white">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-lumen-purple-600/15 ring-1 ring-lumen-purple-500/40 text-lumen-purple-300">
                   {Icon ? (
-                    <Icon className="h-8 w-8" strokeWidth={1.6} />
+                    <Icon className="h-4 w-4" strokeWidth={2} />
                   ) : null}
                 </div>
-                <h3 className="text-base font-semibold text-white">
+                <h3 className="text-sm font-semibold text-white">
                   {badge.title}
                 </h3>
               </motion.div>

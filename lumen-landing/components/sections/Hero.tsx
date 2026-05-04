@@ -4,7 +4,6 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { Container } from "@/components/ui/Container";
 import { CheckBullet } from "@/components/ui/CheckBullet";
-import { ButtonLink } from "@/components/ui/Button";
 import { ASSETS, HERO_FEATURES } from "@/lib/constants";
 
 export function Hero() {
@@ -38,10 +37,10 @@ export function Hero() {
             viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.1 }}
           >
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-white">
+            <h2 className="font-display text-2xl sm:text-[28px] font-bold text-white">
               The Lumen Device
             </h2>
-            <p className="mt-3 text-lg text-white/70">
+            <p className="mt-2 text-sm text-white/70">
               Metabolic tracking in the palm of your hands
             </p>
             <ul className="mt-8 space-y-4 text-white/85">
@@ -49,11 +48,6 @@ export function Hero() {
                 <CheckBullet key={feat} variant="dark">{feat}</CheckBullet>
               ))}
             </ul>
-            <div className="mt-10">
-              <ButtonLink href="#pricing" variant="primary" size="lg">
-                Select Your Track
-              </ButtonLink>
-            </div>
           </motion.div>
 
           {/* Right column - product image */}
@@ -64,19 +58,20 @@ export function Hero() {
             transition={{ duration: 0.7, delay: 0.15 }}
             className="relative mx-auto w-full max-w-[460px]"
           >
-            <div className="relative aspect-[4/5] rounded-4xl bg-gradient-to-br from-lumen-purple-900/60 to-lumen-purple-700/40 p-6 shadow-purple-glow ring-1 ring-lumen-purple-500/40">
+            <div className="relative aspect-[4/5]">
               <Image
                 src={ASSETS.hero.desktop}
                 alt="Lumen device with companion mobile app"
                 fill
                 priority
                 sizes="(max-width: 1024px) 90vw, 460px"
-                className="object-contain p-6"
+                className="object-contain"
               />
               {/* Device included badge */}
-              <div className="absolute -top-3 -right-3 sm:top-4 sm:right-4 rotate-6">
-                <div className="bg-lumen-purple-600 text-white text-xs font-extrabold tracking-wider rounded-full px-4 py-2 shadow-purple-glow">
-                  DEVICE INCLUDED
+              <div className="absolute top-[38%] left-[40%] sm:top-[34%] sm:left-[38%]">
+                <div className="flex h-24 w-24 sm:h-28 sm:w-28 flex-col items-center justify-center rounded-full bg-lumen-purple-600 text-center text-white text-[11px] font-extrabold uppercase tracking-[0.12em] leading-tight shadow-purple-glow ring-2 ring-white/20">
+                  <span>Device</span>
+                  <span>Included</span>
                 </div>
               </div>
             </div>

@@ -4,7 +4,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
-import { ASSETS, NEWSLETTER } from "@/lib/constants";
+import { ASSETS } from "@/lib/constants";
 
 export function Newsletter() {
   return (
@@ -23,25 +23,28 @@ export function Newsletter() {
           />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center relative">
-            <div className="lg:col-span-3 hidden lg:block">
-              <div className="relative aspect-square w-full max-w-[180px]">
+            <div className="lg:col-span-4 hidden lg:block">
+              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl">
                 <Image
-                  src={ASSETS.hero.mobile}
-                  alt="Lumen device"
+                  src={ASSETS.realtime.desktop}
+                  alt="Person using the Lumen device"
                   fill
-                  sizes="180px"
-                  className="object-contain"
+                  sizes="(max-width: 1024px) 90vw, 320px"
+                  className="object-cover"
                 />
               </div>
             </div>
 
-            <div className="lg:col-span-9">
+            <div className="lg:col-span-8">
               <h2 className="font-display text-2xl sm:text-3xl font-bold text-white leading-tight">
-                {NEWSLETTER.title}
+                Sign up to our newsletter
+                <br />
+                and receive{" "}
+                <span className="text-white">$25 off</span>
               </h2>
 
               <form
-                className="mt-6 flex flex-col sm:flex-row gap-3 max-w-xl"
+                className="mt-6 flex flex-col sm:flex-row gap-3"
                 onSubmit={(e) => e.preventDefault()}
               >
                 <label htmlFor="newsletter-email" className="sr-only">
@@ -52,11 +55,16 @@ export function Newsletter() {
                   type="email"
                   required
                   autoComplete="email"
-                  placeholder="Enter your email"
-                  className="flex-1 h-12 rounded-full bg-white/10 backdrop-blur px-5 text-white placeholder:text-white/50 ring-1 ring-white/30 focus:outline-none focus:ring-2 focus:ring-white"
+                  placeholder="Email"
+                  className="flex-1 h-12 rounded-full bg-white px-5 text-lumen-dark placeholder:text-lumen-gray focus:outline-none focus:ring-2 focus:ring-white"
                 />
-                <Button type="submit" variant="secondary" size="md">
-                  Submit
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  className="sm:px-10 uppercase tracking-wider"
+                >
+                  Send
                 </Button>
               </form>
             </div>

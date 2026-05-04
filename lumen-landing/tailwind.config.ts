@@ -27,6 +27,8 @@ const config: Config = {
           // Pink/magenta accent (from "Save $$200" gradient and patches)
           pink: "#FF608F",
           magenta: "#C453FD",
+          // Mint accent used in promo banners
+          mint: "#7CE7C7",
           // Dark navy (promo bar, footer)
           dark: "#0E0828",
           darker: "#070318",
