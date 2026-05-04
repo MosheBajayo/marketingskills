@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #0a0613;
+  --color-fg: #ffffff;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv01";
+}
+
+@layer utilities {
+  .gradient-text {
+    background: linear-gradient(90deg, #FF608F 0%, #C453FD 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .container-px {
+    @apply px-5 sm:px-8 lg:px-12;
+  }
+}
+
+/* Hide native marker on details/summary, we'll use our own */
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
