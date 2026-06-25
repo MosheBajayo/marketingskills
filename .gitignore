@@ -1,3 +1,7 @@
+# Personal assistant — private data, never commit
+.agents/personal-context.md
+.agents/assistant-memory.md
+
 # Dependencies
 node_modules/
 
