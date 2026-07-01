@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glow Ritual — Vitamin C Serum | Demo Store</title>
+  <meta name="description" content="Brighter, glowing skin in 14 days with our best-selling Vitamin C serum. Free shipping, free 30-day returns, 4.8 stars from 2,140 reviews.">
+  <!-- CRO Platform snippet: assigns experiments + tracks events on this page -->
+  <script src="/t/snippet.js?site=site_demo" async></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: Georgia, serif; color: #2b2620; background: #faf7f2; }
+    header { display: flex; justify-content: space-between; padding: 18px 40px; border-bottom: 1px solid #e5ddd0; font-family: Helvetica, sans-serif; }
+    .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 60px 40px; max-width: 1000px; margin: 0 auto; align-items: center; }
+    .product-img { background: linear-gradient(135deg, #f4c98a, #e8927c); border-radius: 16px; height: 380px; display: flex; align-items: center; justify-content: center; font-size: 80px; }
+    h1 { font-size: 34px; line-height: 1.2; margin-bottom: 14px; }
+    .stars { color: #d99a2b; font-family: Helvetica, sans-serif; font-size: 14px; margin-bottom: 14px; }
+    .price { font-size: 24px; margin-bottom: 18px; }
+    .price s { color: #a09582; font-size: 18px; }
+    .cta { background: #2b2620; color: #fff; border: none; padding: 16px 36px; font-size: 16px; border-radius: 8px; cursor: pointer; font-family: Helvetica, sans-serif; }
+    .cta:hover { background: #4a4238; }
+    .shipping { font-family: Helvetica, sans-serif; font-size: 13px; color: #6f6555; margin-top: 12px; }
+    .proof { max-width: 1000px; margin: 0 auto; padding: 0 40px 60px; }
+    .review { background: #fff; border: 1px solid #e5ddd0; border-radius: 10px; padding: 18px; margin-bottom: 12px; }
+    .newsletter { background: #2b2620; color: #f5efe4; padding: 50px 40px; text-align: center; }
+    .newsletter input { padding: 12px; border-radius: 8px 0 0 8px; border: none; width: 260px; }
+    .newsletter button { padding: 12px 20px; border-radius: 0 8px 8px 0; border: none; background: #d99a2b; cursor: pointer; }
+    .debug { position: fixed; bottom: 12px; left: 12px; background: #2b2620; color: #9fe8c3; font: 12px monospace; padding: 10px 14px; border-radius: 8px; opacity: .92; }
+  </style>
+</head>
+<body>
+  <header><strong>GLOW RITUAL</strong><span>Cart (0)</span></header>
+
+  <section class="hero">
+    <div class="product-img">🧴</div>
+    <div>
+      <h1 class="hero-title">Vitamin C Brightening Serum</h1>
+      <div class="stars">★★★★★ 4.8 · 2,140 verified reviews</div>
+      <p class="price"><s>$62</s> <strong>$48</strong> — limited time</p>
+      <p style="margin-bottom:20px">Visibly brighter, glowing skin in 14 days or your money back. Clean, vegan, dermatologist-tested.</p>
+      <button class="cta" data-cro-convert="purchase">Add to Cart</button>
+      <p class="shipping">✓ Free shipping over $40 · ✓ Free 30-day returns · ✓ Secure checkout</p>
+    </div>
+  </section>
+
+  <section class="proof">
+    <h2 style="margin-bottom:16px">What customers say</h2>
+    <div class="review">“My dark spots faded in two weeks. This serum is the real deal.” — <em>Dana K., verified buyer</em></div>
+    <div class="review">“Trusted by my whole friend group now. We're all glowing.” — <em>Priya S., verified buyer</em></div>
+  </section>
+
+  <section class="newsletter">
+    <h2 style="margin-bottom:8px">Get 10% off your first order</h2>
+    <form onsubmit="event.preventDefault(); window.CRO && window.CRO.convert('email_signup'); this.querySelector('button').textContent='Sent ✓';">
+      <input type="email" placeholder="you@example.com" required><button type="submit">Get my code</button>
+    </form>
+  </section>
+
+  <div class="debug" id="debug">CRO snippet loading…</div>
+  <script>
+    // Show live assignment info so you can see the platform working.
+    setTimeout(function () {
+      var d = document.getElementById('debug');
+      if (!window.CRO) { d.textContent = 'Snippet not loaded — is the server running?'; return; }
+      var lines = ['visitor: ' + window.CRO.visitorId];
+      var names = Object.keys(window.CRO.assignments);
+      if (names.length) names.forEach(function (n) { lines.push(n + ' → ' + window.CRO.assignments[n].name); });
+      else lines.push('no running experiments target this page');
+      lines.push('click "Add to Cart" to fire a conversion');
+      d.innerHTML = lines.join('<br>');
+    }, 800);
+  </script>
+</body>
+</html>
