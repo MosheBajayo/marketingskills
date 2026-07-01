@@ -56,22 +56,26 @@ function fmtDate(iso) {
 const pages = {};
 
 pages.dashboard = async () => {
-  const [overview, experiments, audits] = await Promise.all([
-    api('/api/overview'), api('/api/experiments'), api('/api/audits'),
+  const [overview, experiments, audits, insightData] = await Promise.all([
+    api('/api/overview'), api('/api/experiments'), api('/api/audits'), api('/api/insights'),
   ]);
   const running = experiments.filter((e) => e.status === 'running');
+  const topInsights = insightData.insights.filter((i) => i.severity !== 'info').slice(0, 3);
   main.innerHTML = `
     <h1>Dashboard</h1>
-    <p class="page-sub">Your conversion optimization program at a glance.</p>
+    <p class="page-sub">Ads, funnel, experiments, and revenue — the full picture.</p>
     <div class="grid cols-4">
-      ${metric('Sites', overview.sites)}
-      ${metric('Running experiments', overview.runningExperiments, `${overview.experiments} total`)}
       ${metric('Unique visitors', overview.visitors.toLocaleString())}
       ${metric('Conversions', overview.conversions.toLocaleString())}
+      ${metric('Revenue', '$' + overview.revenue.toLocaleString())}
+      ${metric('Ad spend', '$' + overview.spend.toLocaleString())}
+      ${metric('Blended ROAS', overview.roas == null ? '—' : overview.roas + '<small>x</small>')}
+      ${metric('Running experiments', overview.runningExperiments, `${overview.experiments} total`)}
       ${metric('Events collected', overview.events.toLocaleString())}
-      ${metric('Audits run', overview.audits)}
       ${metric('Latest audit score', overview.lastAuditScore == null ? '—' : overview.lastAuditScore + '<small>/100</small>')}
     </div>
+    ${topInsights.length ? `<h2>Needs attention <a class="back-link" href="#/insights" style="font-weight:400">— all insights →</a></h2>
+      <div class="grid cols-3">${topInsights.map(insightCard).join('')}</div>` : ''}
     <h2>Running experiments</h2>
     ${running.length ? `<div class="card" style="padding:0">${experimentTable(running)}</div>`
       : `<div class="empty">No running experiments. <a class="back-link" href="#/experiments">Create one →</a></div>`}
@@ -443,6 +447,191 @@ pages.playbooks = async (category) => {
   );
 };
 
+// ---------- channels (ads performance) ----------
+
+function money(n) {
+  return n == null ? '—' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+pages.channels = async (model = 'last') => {
+  const [report, campaigns, sites] = await Promise.all([
+    api(`/api/channels?model=${model}`), api('/api/campaigns'), api('/api/sites'),
+  ]);
+  const t = report.totals;
+  main.innerHTML = `
+    <h1>Ads &amp; Channels</h1>
+    <p class="page-sub">Every session attributed to its source. Add campaign spend to see ROAS and CPA per channel.</p>
+    <div class="pill-row">
+      <span class="pill ${model === 'last' ? 'active' : ''}" data-model="last">Last touch</span>
+      <span class="pill ${model === 'first' ? 'active' : ''}" data-model="first">First touch</span>
+    </div>
+    <div class="grid cols-4">
+      ${metric('Visitors', t.visitors.toLocaleString())}
+      ${metric('Conversions', t.conversions.toLocaleString(), pct(t.cvr, 1) + ' CVR')}
+      ${metric('Revenue', money(t.revenue))}
+      ${metric('Spend', money(t.spend))}
+      ${metric('Blended ROAS', t.roas == null ? '—' : t.roas + '<small>x</small>')}
+      ${metric('Blended CPA', money(t.cpa))}
+    </div>
+    <h2>Performance by channel (${model} touch)</h2>
+    ${report.rows.length ? `<div class="card" style="padding:0;overflow-x:auto"><table>
+      <tr><th>Source / Medium / Campaign</th><th>Visitors</th><th>Conv.</th><th>CVR</th><th>Revenue</th><th>Spend</th><th>ROAS</th><th>CPA</th><th>CPC</th><th>CTR</th></tr>
+      ${report.rows.map((r) => `<tr>
+        <td><strong>${esc(r.source)}</strong> <span class="muted">/ ${esc(r.medium)} / ${esc(r.campaign)}</span></td>
+        <td>${r.visitors.toLocaleString()}</td>
+        <td>${r.conversions.toLocaleString()}</td>
+        <td>${pct(r.cvr, 1)}</td>
+        <td>${money(r.revenue)}</td>
+        <td>${r.hasSpend ? money(r.spend) : '<span class="muted">—</span>'}</td>
+        <td>${roasBadge(r)}</td>
+        <td>${money(r.cpa)}</td>
+        <td>${money(r.cpc)}</td>
+        <td>${r.ctr == null ? '—' : pct(r.ctr, 2)}</td>
+      </tr>`).join('')}
+    </table></div>` : '<div class="empty">No attributed traffic yet — install the snippet and drive some visits.</div>'}
+    <h2>Campaign spend entries</h2>
+    <div class="card">
+      <h3>Add spend (from your ad platform)</h3>
+      <p class="muted" style="margin-bottom:12px">Enter spend per campaign with the exact UTM values used on the ads. For automated pulls, see <code>tools/integrations/google-ads.md</code> and <code>tools/integrations/composio.md</code> (Meta Ads) in this repo.</p>
+      <form id="campaign-form" class="inline-form">
+        <div><label>Name</label><input name="name" placeholder="Prospecting broad" required></div>
+        <div><label>utm_source</label><input name="utmSource" placeholder="meta" required></div>
+        <div><label>utm_medium</label><input name="utmMedium" placeholder="cpc" value="cpc"></div>
+        <div><label>utm_campaign</label><input name="utmCampaign" placeholder="prospecting-broad"></div>
+        <div><label>Spend ($)</label><input name="spend" type="number" step="0.01" min="0" required></div>
+        <div><label>Clicks</label><input name="clicks" type="number" min="0"></div>
+        <div><label>Impressions</label><input name="impressions" type="number" min="0"></div>
+        <div><label>Site (optional)</label><select name="siteId"><option value="">All</option>
+          ${sites.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>
+        <button type="submit">Add</button>
+      </form>
+    </div>
+    ${campaigns.length ? `<div class="card mt" style="padding:0"><table>
+      <tr><th>Name</th><th>UTMs</th><th>Spend</th><th>Clicks</th><th>Impressions</th><th></th></tr>
+      ${campaigns.map((c) => `<tr>
+        <td><strong>${esc(c.name)}</strong></td>
+        <td class="muted">${esc(c.utmSource)} / ${esc(c.utmMedium)} / ${esc(c.utmCampaign || '(none)')}</td>
+        <td>${money(c.spend)}</td><td>${c.clicks.toLocaleString()}</td><td>${c.impressions.toLocaleString()}</td>
+        <td><button class="danger small" data-del-campaign="${esc(c.id)}">Delete</button></td>
+      </tr>`).join('')}
+    </table></div>` : ''}
+    <h2>UTM link builder</h2>
+    <div class="card">
+      <form id="utm-form" class="inline-form">
+        <div style="flex:2"><label>Landing page URL</label><input name="base" placeholder="https://yourbrand.com/products/serum" required></div>
+        <div><label>utm_source</label><input name="source" placeholder="meta" required></div>
+        <div><label>utm_medium</label><input name="medium" placeholder="cpc" value="cpc"></div>
+        <div><label>utm_campaign</label><input name="campaign" placeholder="prospecting-broad"></div>
+        <div><label>utm_content</label><input name="content" placeholder="video-hook-a"></div>
+        <button type="submit">Build</button>
+      </form>
+      <pre class="code mt hidden" id="utm-output"></pre>
+    </div>
+  `;
+  main.querySelectorAll('[data-model]').forEach((pill) =>
+    pill.addEventListener('click', () => pages.channels(pill.dataset.model))
+  );
+  document.getElementById('campaign-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      await api('/api/campaigns', {
+        method: 'POST',
+        body: {
+          name: fd.get('name'), utmSource: fd.get('utmSource'), utmMedium: fd.get('utmMedium'),
+          utmCampaign: fd.get('utmCampaign'), siteId: fd.get('siteId') || undefined,
+          spend: Number(fd.get('spend')),
+          clicks: fd.get('clicks') ? Number(fd.get('clicks')) : 0,
+          impressions: fd.get('impressions') ? Number(fd.get('impressions')) : 0,
+        },
+      });
+      toast('Campaign spend added');
+      pages.channels(model);
+    } catch (err) { toast(err.message, true); }
+  });
+  main.querySelectorAll('[data-del-campaign]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      await api(`/api/campaigns/${btn.dataset.delCampaign}`, { method: 'DELETE' });
+      toast('Deleted');
+      pages.channels(model);
+    })
+  );
+  document.getElementById('utm-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const url = new URL(fd.get('base'));
+      const clean = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, '-');
+      ['source', 'medium', 'campaign', 'content'].forEach((k) => {
+        if (fd.get(k)) url.searchParams.set('utm_' + k, clean(fd.get(k)));
+      });
+      const out = document.getElementById('utm-output');
+      out.textContent = url.toString();
+      out.classList.remove('hidden');
+    } catch { toast('Enter a valid URL (including https://)', true); }
+  });
+};
+
+function roasBadge(r) {
+  if (r.roas == null) return '—';
+  const cls = r.roas >= 3 ? 'green' : r.roas >= 1 ? 'amber' : 'red';
+  return `<span class="badge ${cls}">${r.roas}x</span>`;
+}
+
+// ---------- funnel ----------
+
+pages.funnel = async () => {
+  const funnel = await api('/api/funnel');
+  const maxVisitors = Math.max(1, ...funnel.stages.map((s) => s.visitors));
+  main.innerHTML = `
+    <h1>Funnel</h1>
+    <p class="page-sub">Visit → add to cart → checkout → purchase. Track steps with <code>CRO.track('add_to_cart')</code> or <code>data-cro-track</code> attributes.</p>
+    <div class="card">
+      ${funnel.stages.map((s, i) => `
+        <div style="padding:12px 0 ${i === funnel.stages.length - 1 ? '0' : '12px'}">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <strong>${esc(s.label)}</strong>
+            <span>
+              <strong>${s.visitors.toLocaleString()}</strong>
+              <span class="muted"> visitors</span>
+              ${s.stepRate != null ? `<span class="badge ${s.stepRate >= 0.5 ? 'green' : s.stepRate >= 0.25 ? 'amber' : 'red'}" style="margin-left:8px">${pct(s.stepRate, 1)} of previous</span>` : ''}
+              ${s.overallRate != null && i > 0 ? `<span class="badge gray" style="margin-left:4px">${pct(s.overallRate, 1)} overall</span>` : ''}
+            </span>
+          </div>
+          <div class="bar-track" style="height:26px"><div class="bar-fill" style="width:${Math.max(1, (s.visitors / maxVisitors) * 100)}%"></div></div>
+          ${s.dropOff ? `<div class="muted" style="font-size:12.5px;margin-top:4px">− ${s.dropOff.toLocaleString()} dropped</div>` : ''}
+        </div>`).join('')}
+    </div>
+    ${funnel.leak ? `<div class="card mt" style="border-color:var(--amber)">
+      🔍 <strong>Biggest leak:</strong> ${esc(funnel.leak.from)} → ${esc(funnel.leak.to)} loses ${pct(funnel.leak.loss, 1)} of visitors.
+      This step is your highest-leverage experiment target — see <a class="back-link" href="#/insights">Insights</a> for the recommended play.</div>` : ''}
+  `;
+};
+
+// ---------- insights ----------
+
+function insightCard(ins) {
+  const style = {
+    bad: ['var(--red)', '🔴'], warn: ['var(--amber)', '🟡'],
+    good: ['var(--green)', '🟢'], info: ['var(--accent)', 'ℹ️'],
+  }[ins.severity] || ['var(--border)', '•'];
+  return `<div class="card" style="border-left:3px solid ${style[0]}">
+    <h3>${style[1]} ${esc(ins.title)}</h3>
+    <p class="muted" style="font-size:13.5px;line-height:1.55">${esc(ins.detail)}</p>
+    ${ins.skill ? `<p class="muted mt" style="font-size:12.5px">Methodology: <code>skills/${esc(ins.skill)}</code></p>` : ''}
+  </div>`;
+}
+
+pages.insights = async () => {
+  const data = await api('/api/insights');
+  main.innerHTML = `
+    <h1>Insights</h1>
+    <p class="page-sub">The full picture: ads spend, attribution, funnel behavior, tracking hygiene, and experiments cross-referenced into prioritized findings.</p>
+    ${data.insights.length ? `<div class="grid cols-2">${data.insights.map(insightCard).join('')}</div>`
+      : '<div class="empty">Not enough data yet — install the snippet, add campaign spend, and come back.</div>'}
+  `;
+};
+
 // ---------- install ----------
 
 pages.install = async () => {
@@ -458,14 +647,25 @@ pages.install = async () => {
       ${first ? `<p class="muted">Using site ID for <strong>${esc(first.name)}</strong>. Find other site IDs on the Sites page.</p>` : '<p class="muted">Add a site first to get a real site ID.</p>'}
     </div>
     <div class="card mt">
-      <h3>2. Track conversions</h3>
-      <p class="muted" style="margin-bottom:10px">Either add an attribute to any button/link:</p>
-      <pre class="code">&lt;button data-cro-convert="purchase"&gt;Complete order&lt;/button&gt;</pre>
-      <p class="muted" style="margin:10px 0">…or call the API from your checkout success page:</p>
-      <pre class="code">window.CRO.convert('purchase');</pre>
+      <h3>2. Track funnel steps</h3>
+      <p class="muted" style="margin-bottom:10px">Markup or JS — these power the Funnel page:</p>
+      <pre class="code">&lt;button data-cro-track="add_to_cart"&gt;Add to Cart&lt;/button&gt;
+
+window.CRO.track('begin_checkout');</pre>
     </div>
     <div class="card mt">
-      <h3>3. Read the assigned variant (optional)</h3>
+      <h3>3. Track conversions with revenue</h3>
+      <p class="muted" style="margin-bottom:10px">Pass the order value so ROAS can be computed per channel:</p>
+      <pre class="code">&lt;button data-cro-convert="purchase" data-cro-value="48"&gt;Complete order&lt;/button&gt;
+
+window.CRO.convert('purchase', { value: orderTotal }); // e.g. on the thank-you page</pre>
+    </div>
+    <div class="card mt">
+      <h3>4. Tag your ads</h3>
+      <p class="muted" style="line-height:1.6">The snippet automatically captures <code>utm_source / utm_medium / utm_campaign / utm_content / utm_term</code>, plus <code>gclid</code>/<code>fbclid</code>/<code>ttclid</code> click IDs and referrers — as both first touch (persisted) and last touch (per session). Use the UTM builder on the <a class="back-link" href="#/channels">Ads &amp; Channels</a> page and make the values match your campaign spend entries exactly.</p>
+    </div>
+    <div class="card mt">
+      <h3>5. Read the assigned variant (optional)</h3>
       <pre class="code">window.CRO.variant('Hero headline test'); // "Control" | "Variant B" | null</pre>
       <p class="muted mt">Variants with DOM changes are applied automatically — no code needed.</p>
     </div>

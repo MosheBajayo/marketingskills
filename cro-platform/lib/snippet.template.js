@@ -3,10 +3,14 @@
  *
  * What it does:
  *  - Assigns each visitor a stable anonymous id (localStorage).
+ *  - Captures UTM parameters + referrer as first touch (persisted) and
+ *    last touch (per session) so every event carries ad attribution.
  *  - Fetches running experiments and deterministically buckets the visitor.
  *  - Applies variant DOM changes (text / html / style / hide) before paint settles.
- *  - Sends pageview + assignment events; exposes window.CRO.convert(goal).
- *  - Auto-tracks clicks on any element with a data-cro-convert="goal" attribute.
+ *  - Sends pageview + assignment events; exposes:
+ *      window.CRO.track(name)                 — funnel steps (add_to_cart, begin_checkout…)
+ *      window.CRO.convert(goal, {value: 48})  — conversions with optional revenue
+ *  - Auto-tracks clicks on [data-cro-track="step"] and [data-cro-convert="goal"].
  */
 (function () {
   'use strict';
@@ -25,6 +29,47 @@
     } catch (e) {
       return 'v_session_' + Math.random().toString(36).slice(2, 10);
     }
+  }
+
+  // ---- attribution: first + last touch -------------------------------
+  function parseTouch() {
+    var touch = { referrer: document.referrer || '', landing: location.pathname };
+    var found = false;
+    try {
+      var q = new URLSearchParams(location.search);
+      ['source', 'medium', 'campaign', 'content', 'term'].forEach(function (k) {
+        var v = q.get('utm_' + k);
+        if (v) { touch[k] = v; found = true; }
+      });
+      // Ad click ids imply paid even without full UTMs.
+      if (!found && (q.get('gclid') || q.get('fbclid') || q.get('ttclid'))) {
+        touch.source = q.get('gclid') ? 'google' : q.get('fbclid') ? 'facebook' : 'tiktok';
+        touch.medium = 'cpc';
+        found = true;
+      }
+    } catch (e) { /* URLSearchParams unavailable */ }
+    var external = touch.referrer && touch.referrer.indexOf('//' + location.host) === -1;
+    return (found || external) ? touch : null;
+  }
+
+  function getTouches() {
+    var current = parseTouch();
+    var ft = null, lt = null;
+    try {
+      ft = JSON.parse(localStorage.getItem('_cro_ft') || 'null');
+      if (!ft) {
+        ft = current || { referrer: '', landing: location.pathname };
+        localStorage.setItem('_cro_ft', JSON.stringify(ft));
+      }
+      lt = JSON.parse(sessionStorage.getItem('_cro_lt') || 'null');
+      if (current || !lt) {
+        lt = current || lt || ft;
+        sessionStorage.setItem('_cro_lt', JSON.stringify(lt));
+      }
+    } catch (e) {
+      ft = ft || current; lt = current || ft;
+    }
+    return { ft: ft, lt: lt };
   }
 
   // FNV-1a — must match lib/experiments.js server-side bucketing.
@@ -69,6 +114,8 @@
     event.siteId = SITE_ID;
     event.visitorId = VID;
     event.url = location.href;
+    event.ft = TOUCHES.ft;
+    event.lt = TOUCHES.lt;
     queue.push(event);
     if (!flushTimer) flushTimer = setTimeout(flush, 400);
   }
@@ -84,20 +131,28 @@
   }
 
   var VID = visitorId();
+  var TOUCHES = getTouches();
   var assignments = {}; // experiment name -> variant
 
   window.CRO = {
     visitorId: VID,
     assignments: assignments,
+    touches: TOUCHES,
     variant: function (experimentName) {
       return assignments[experimentName] ? assignments[experimentName].name : null;
     },
-    convert: function (goal) {
+    // Funnel step, e.g. CRO.track('add_to_cart')
+    track: function (name) {
+      if (name) track({ type: 'track', name: String(name) });
+    },
+    // Conversion with optional revenue: CRO.convert('purchase', {value: 48})
+    convert: function (goal, opts) {
+      var value = opts && typeof opts.value === 'number' ? opts.value : null;
       for (var name in assignments) {
         var a = assignments[name];
-        track({ type: 'conversion', experimentId: a.experimentId, variantId: a.id, goal: goal || a.goal });
+        track({ type: 'conversion', experimentId: a.experimentId, variantId: a.id, goal: goal || a.goal, value: value });
       }
-      if (!Object.keys(assignments).length) track({ type: 'conversion', goal: goal || 'conversion' });
+      if (!Object.keys(assignments).length) track({ type: 'conversion', goal: goal || 'conversion', value: value });
       flush();
     },
   };
@@ -119,8 +174,14 @@
     .catch(function () { /* platform unreachable — fail open, no changes applied */ });
 
   document.addEventListener('click', function (e) {
-    var el = e.target && e.target.closest ? e.target.closest('[data-cro-convert]') : null;
-    if (el) window.CRO.convert(el.getAttribute('data-cro-convert') || undefined);
+    if (!e.target || !e.target.closest) return;
+    var stepEl = e.target.closest('[data-cro-track]');
+    if (stepEl) window.CRO.track(stepEl.getAttribute('data-cro-track'));
+    var convEl = e.target.closest('[data-cro-convert]');
+    if (convEl) {
+      var value = parseFloat(convEl.getAttribute('data-cro-value'));
+      window.CRO.convert(convEl.getAttribute('data-cro-convert') || undefined, isNaN(value) ? undefined : { value: value });
+    }
   });
 
   window.addEventListener('pagehide', flush);

@@ -1,11 +1,11 @@
 // Simple JSON-file persistence layer. Zero dependencies.
-// Collections: sites, experiments, events, audits.
+// Collections: sites, experiments, events, audits, campaigns.
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
 
-const COLLECTIONS = ['sites', 'experiments', 'events', 'audits'];
+const COLLECTIONS = ['sites', 'experiments', 'events', 'audits', 'campaigns'];
 
 class Store {
   constructor(filePath) {

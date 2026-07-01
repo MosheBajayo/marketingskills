@@ -130,6 +130,72 @@ test('full product flow', async (t) => {
     assert.ok(r.body.events > 0);
   });
 
+  await t.test('collect accepts funnel + revenue + attribution fields', async () => {
+    const touch = { source: 'meta', medium: 'cpc', campaign: 'pros', referrer: 'https://facebook.com/', junk: 'dropme' };
+    const r = await call('POST', '/t/collect', {
+      events: [
+        { type: 'pageview', siteId, visitorId: 'attr1', ft: touch, lt: touch },
+        { type: 'track', siteId, visitorId: 'attr1', name: 'add_to_cart', ft: touch, lt: touch },
+        { type: 'track', siteId, visitorId: 'attr1' }, // track without name → rejected
+        { type: 'conversion', siteId, visitorId: 'attr1', goal: 'purchase', value: 48, ft: touch, lt: touch },
+      ],
+    });
+    assert.strictEqual(r.body.accepted, 3);
+  });
+
+  await t.test('campaigns CRUD and validation', async () => {
+    const bad = await call('POST', '/api/campaigns', { name: 'x' });
+    assert.strictEqual(bad.status, 400);
+    const r = await call('POST', '/api/campaigns', {
+      name: 'Meta prospecting', utmSource: 'META', utmMedium: 'cpc', utmCampaign: 'pros',
+      spend: 96, clicks: 100, impressions: 10000, siteId,
+    });
+    assert.strictEqual(r.status, 201);
+    assert.strictEqual(r.body.utmSource, 'meta'); // normalized lowercase
+    const list = await call('GET', '/api/campaigns');
+    assert.strictEqual(list.body.length, 1);
+  });
+
+  await t.test('channels report attributes traffic and matches spend', async () => {
+    const r = await call('GET', `/api/channels?siteId=${siteId}`);
+    const meta = r.body.rows.find((x) => x.source === 'meta');
+    assert.ok(meta, 'meta channel row exists');
+    assert.strictEqual(meta.visitors, 1);
+    assert.strictEqual(meta.conversions, 1);
+    assert.strictEqual(meta.revenue, 48);
+    assert.strictEqual(meta.spend, 96);
+    assert.strictEqual(meta.roas, 0.5);
+    // the earlier unattributed test traffic lands in direct
+    assert.ok(r.body.rows.find((x) => x.source === 'direct'));
+    const first = await call('GET', `/api/channels?siteId=${siteId}&model=first`);
+    assert.strictEqual(first.body.model, 'first');
+  });
+
+  await t.test('funnel report tracks stages', async () => {
+    const r = await call('GET', `/api/funnel?siteId=${siteId}`);
+    const byId = Object.fromEntries(r.body.stages.map((s) => [s.id, s.visitors]));
+    assert.ok(byId.visit >= 1);
+    assert.strictEqual(byId.add_to_cart, 1);
+    assert.ok(byId.purchase >= 1);
+  });
+
+  await t.test('insights cross-reference spend, funnel, and experiments', async () => {
+    const r = await call('GET', '/api/insights');
+    assert.strictEqual(r.status, 200);
+    assert.ok(Array.isArray(r.body.insights));
+    // meta ROAS is 0.5 with only $96 spend (< $100 threshold) so no loser flag,
+    // but the blended-picture info insight must exist since spend > 0.
+    assert.ok(r.body.insights.some((i) => i.title.includes('Blended performance')));
+    assert.ok(r.body.insights.every((i) => ['bad', 'warn', 'good', 'info'].includes(i.severity)));
+  });
+
+  await t.test('overview includes revenue, spend, roas', async () => {
+    const r = await call('GET', '/api/overview');
+    assert.strictEqual(r.body.revenue, 48);
+    assert.strictEqual(r.body.spend, 96);
+    assert.strictEqual(r.body.roas, 0.5);
+  });
+
   await t.test('playbooks endpoint filters by category', async () => {
     const all = await call('GET', '/api/playbooks');
     assert.ok(all.body.playbooks.length >= 10);

@@ -70,9 +70,44 @@ store.data.experiments.push({
   ],
 });
 
-// --- Events for experiment 1 ---
+// --- Ad campaigns (spend entries, matching the UTMs on seeded traffic) ---
+const CHANNELS = [
+  { share: 0.28, mult: 0.85, touch: { source: 'meta', medium: 'cpc', campaign: 'prospecting-broad', referrer: 'https://facebook.com/', landing: '/demo.html' } },
+  { share: 0.10, mult: 1.9, touch: { source: 'meta', medium: 'cpc', campaign: 'retargeting-30d', referrer: 'https://facebook.com/', landing: '/demo.html' } },
+  { share: 0.13, mult: 1.7, touch: { source: 'google', medium: 'cpc', campaign: 'brand-search', referrer: 'https://google.com/', landing: '/demo.html' } },
+  { share: 0.12, mult: 1.4, touch: { source: 'klaviyo', medium: 'email', campaign: 'welcome-flow', referrer: '', landing: '/demo.html' } },
+  { share: 0.17, mult: 1.0, touch: { referrer: 'https://www.google.com/', landing: '/demo.html' } }, // organic
+  { share: 0.20, mult: 1.1, touch: null }, // direct / untagged
+];
+
+store.data.campaigns.push(
+  {
+    id: 'cmp_meta_prospecting', name: 'Meta prospecting broad', siteId: 'site_demo', channel: 'Meta Ads',
+    utmSource: 'meta', utmMedium: 'cpc', utmCampaign: 'prospecting-broad',
+    spend: 1800, clicks: 1150, impressions: 152000, period: 'last 14 days', createdAt: iso(86400e3),
+  },
+  {
+    id: 'cmp_meta_retargeting', name: 'Meta retargeting 30d', siteId: 'site_demo', channel: 'Meta Ads',
+    utmSource: 'meta', utmMedium: 'cpc', utmCampaign: 'retargeting-30d',
+    spend: 600, clicks: 480, impressions: 21000, period: 'last 14 days', createdAt: iso(86400e3),
+  },
+  {
+    id: 'cmp_google_brand', name: 'Google brand search', siteId: 'site_demo', channel: 'Google Ads',
+    utmSource: 'google', utmMedium: 'cpc', utmCampaign: 'brand-search',
+    spend: 400, clicks: 520, impressions: 9500, period: 'last 14 days', createdAt: iso(86400e3),
+  },
+  {
+    id: 'cmp_tiktok_test', name: 'TikTok spark test', siteId: 'site_demo', channel: 'TikTok Ads',
+    utmSource: 'tiktok', utmMedium: 'cpc', utmCampaign: 'spark-test',
+    spend: 250, clicks: 300, impressions: 60000, period: 'last 14 days', createdAt: iso(86400e3),
+  } // note: no traffic seeded for this one → surfaces a "spend, zero visitors" insight
+);
+
+// --- Events ---
 // Deterministic simulation: bucket each visitor with the real assignment
-// function, convert control at ~4.5% and the variant at ~6.5%.
+// function. Purchase probability = variant base rate × channel multiplier.
+// Funnel: everyone views; a share adds to cart; a share of those checks out;
+// buyers complete all steps and convert with revenue.
 const RATES = { v0: 0.045, v1: 0.065 };
 const VISITORS = 2600;
 let eventId = 0;
@@ -86,14 +121,40 @@ function pseudoRandom(i) {
   return x - Math.floor(x);
 }
 
+function pickChannel(i) {
+  const r = pseudoRandom(i + 5000);
+  let acc = 0;
+  for (const c of CHANNELS) {
+    acc += c.share;
+    if (r < acc) return c;
+  }
+  return CHANNELS[CHANNELS.length - 1];
+}
+
 for (let i = 0; i < VISITORS; i++) {
   const visitorId = `v_demo_${i.toString(36)}`;
   const variant = assignVariant(expHero, visitorId);
+  const channel = pickChannel(i);
+  const ft = channel.touch;
+  const lt = channel.touch;
   const msAgo = Math.floor(pseudoRandom(i + 9000) * 13 * 86400e3); // spread over 13 days
-  pushEvent({ type: 'pageview', siteId: 'site_demo', visitorId, experimentId: null, variantId: null, goal: null, url: '/demo.html' }, msAgo);
-  pushEvent({ type: 'assignment', siteId: 'site_demo', visitorId, experimentId: expHero.id, variantId: variant.id, goal: null, url: '/demo.html' }, msAgo);
-  if (pseudoRandom(i) < RATES[variant.id]) {
-    pushEvent({ type: 'conversion', siteId: 'site_demo', visitorId, experimentId: expHero.id, variantId: variant.id, goal: 'purchase', url: '/demo.html' }, msAgo - 60e3);
+  const base = { siteId: 'site_demo', visitorId, experimentId: null, variantId: null, goal: null, url: '/demo.html', ft, lt };
+
+  pushEvent({ ...base, type: 'pageview' }, msAgo);
+  pushEvent({ ...base, type: 'assignment', experimentId: expHero.id, variantId: variant.id }, msAgo);
+
+  const buys = pseudoRandom(i) < RATES[variant.id] * channel.mult;
+  const addsToCart = buys || pseudoRandom(i + 1000) < 0.22;
+  const checksOut = buys || (addsToCart && pseudoRandom(i + 2000) < 0.30);
+
+  if (addsToCart) pushEvent({ ...base, type: 'track', name: 'add_to_cart' }, msAgo - 90e3);
+  if (checksOut) pushEvent({ ...base, type: 'track', name: 'begin_checkout' }, msAgo - 60e3);
+  if (buys) {
+    const value = pseudoRandom(i + 3000) < 0.2 ? 96 : 48; // 20% buy two units
+    pushEvent({
+      ...base, type: 'conversion', experimentId: expHero.id, variantId: variant.id,
+      goal: 'purchase', value,
+    }, msAgo - 30e3);
   }
 }
 
@@ -116,9 +177,12 @@ store.save();
 
 const assignments = store.data.events.filter((e) => e.type === 'assignment');
 const conversions = store.data.events.filter((e) => e.type === 'conversion');
+const revenue = conversions.reduce((s, e) => s + (e.value || 0), 0);
+const spend = store.data.campaigns.reduce((s, c) => s + c.spend, 0);
 console.log('Seeded demo data:');
 console.log(`  1 site (site_demo), 2 experiments, ${store.data.events.length} events`);
-console.log(`  ${assignments.length} assignments, ${conversions.length} conversions`);
+console.log(`  ${assignments.length} assignments, ${conversions.length} conversions, $${revenue} revenue`);
+console.log(`  ${store.data.campaigns.length} ad campaigns, $${spend} spend (blended ROAS ${(revenue / spend).toFixed(2)}x)`);
 console.log(`  1 audit of the demo store (score ${report.score}/100, grade ${report.grade})`);
 console.log('\nStart the server with `npm start`, then open:');
 console.log('  Dashboard:  http://localhost:4600/');

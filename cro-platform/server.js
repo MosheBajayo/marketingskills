@@ -13,6 +13,8 @@ const path = require('node:path');
 const { Store } = require('./lib/store');
 const { analyzeHtml, runAudit } = require('./lib/audit');
 const recommendations = require('./lib/recommendations');
+const { channelReport, funnelReport } = require('./lib/attribution');
+const { generateInsights } = require('./lib/insights');
 const {
   validateExperiment,
   normalizeExperiment,
@@ -207,6 +209,80 @@ route('GET', '/api/audits/:id', (req, res, params) => {
   json(res, 200, audit);
 });
 
+// ---------------------------------------------------------------- API: campaigns (ad spend)
+
+route('GET', '/api/campaigns', (req, res, params, query) => {
+  let list = store.all('campaigns');
+  if (query.get('siteId')) list = list.filter((c) => c.siteId === query.get('siteId'));
+  json(res, 200, list);
+});
+
+route('POST', '/api/campaigns', async (req, res) => {
+  const body = await readBody(req);
+  const errors = [];
+  if (!body.name) errors.push('name is required');
+  if (!body.utmSource) errors.push('utmSource is required (must match the utm_source on your ads)');
+  if (body.spend == null || typeof body.spend !== 'number' || body.spend < 0) errors.push('spend must be a non-negative number');
+  if (errors.length) return json(res, 400, { errors });
+  const campaign = store.insert('campaigns', {
+    name: String(body.name).trim(),
+    siteId: body.siteId || null,
+    channel: body.channel || '', // e.g. "Meta Ads", "Google Ads" — display only
+    utmSource: String(body.utmSource).trim().toLowerCase(),
+    utmMedium: body.utmMedium ? String(body.utmMedium).trim().toLowerCase() : 'cpc',
+    utmCampaign: body.utmCampaign ? String(body.utmCampaign).trim().toLowerCase() : '',
+    spend: body.spend,
+    clicks: typeof body.clicks === 'number' ? body.clicks : 0,
+    impressions: typeof body.impressions === 'number' ? body.impressions : 0,
+    period: body.period || '', // free-form, e.g. "2026-06"
+  });
+  json(res, 201, campaign);
+});
+
+route('DELETE', '/api/campaigns/:id', (req, res, params) => {
+  if (!store.remove('campaigns', params.id)) return json(res, 404, { error: 'campaign not found' });
+  json(res, 200, { ok: true });
+});
+
+// ---------------------------------------------------------------- API: channels, funnel, insights
+
+function siteEvents(query) {
+  const siteId = query.get('siteId');
+  return siteId ? store.find('events', (e) => e.siteId === siteId) : store.all('events');
+}
+function siteCampaigns(query) {
+  const siteId = query.get('siteId');
+  return siteId ? store.find('campaigns', (c) => !c.siteId || c.siteId === siteId) : store.all('campaigns');
+}
+
+route('GET', '/api/channels', (req, res, params, query) => {
+  const model = query.get('model') === 'first' ? 'first' : 'last';
+  json(res, 200, channelReport(siteEvents(query), siteCampaigns(query), model));
+});
+
+route('GET', '/api/funnel', (req, res, params, query) => {
+  json(res, 200, funnelReport(siteEvents(query)));
+});
+
+route('GET', '/api/insights', (req, res, params, query) => {
+  const events = siteEvents(query);
+  const campaigns = siteCampaigns(query);
+  const experiments = store.all('experiments');
+  const experimentResults = new Map(
+    experiments.map((exp) => [
+      exp.id,
+      computeResults(exp, store.find('events', (e) => e.experimentId === exp.id)),
+    ])
+  );
+  json(res, 200, {
+    insights: generateInsights({
+      channels: channelReport(events, campaigns, 'last'),
+      funnel: funnelReport(events),
+      campaigns, experiments, experimentResults,
+    }),
+  });
+});
+
 // ---------------------------------------------------------------- API: playbooks & overview
 
 route('GET', '/api/playbooks', (req, res, params, query) => {
@@ -224,7 +300,9 @@ route('GET', '/api/overview', (req, res) => {
   const experiments = store.all('experiments');
   const running = experiments.filter((e) => e.status === 'running');
   const visitors = new Set(events.map((e) => e.visitorId)).size;
-  const conversions = events.filter((e) => e.type === 'conversion').length;
+  const conversionEvents = events.filter((e) => e.type === 'conversion');
+  const revenue = Math.round(conversionEvents.reduce((s, e) => s + (typeof e.value === 'number' ? e.value : 0), 0) * 100) / 100;
+  const spend = Math.round(store.all('campaigns').reduce((s, c) => s + (c.spend || 0), 0) * 100) / 100;
   const audits = store.all('audits');
   const lastAudit = audits[audits.length - 1];
   json(res, 200, {
@@ -232,7 +310,10 @@ route('GET', '/api/overview', (req, res) => {
     experiments: experiments.length,
     runningExperiments: running.length,
     visitors,
-    conversions,
+    conversions: conversionEvents.length,
+    revenue,
+    spend,
+    roas: spend > 0 ? Math.round((revenue / spend) * 100) / 100 : null,
     events: events.length,
     audits: audits.length,
     lastAuditScore: lastAudit && lastAudit.report ? lastAudit.report.score : null,
@@ -250,7 +331,21 @@ route('GET', '/t/config', (req, res, params, query) => {
   json(res, 200, { experiments });
 });
 
-const VALID_EVENT_TYPES = ['pageview', 'assignment', 'conversion'];
+const VALID_EVENT_TYPES = ['pageview', 'assignment', 'conversion', 'track'];
+const TOUCH_KEYS = ['source', 'medium', 'campaign', 'content', 'term', 'referrer', 'landing'];
+
+function sanitizeTouch(t) {
+  if (!t || typeof t !== 'object') return null;
+  const out = {};
+  let any = false;
+  for (const k of TOUCH_KEYS) {
+    if (t[k] != null && t[k] !== '') {
+      out[k] = String(t[k]).slice(0, 300);
+      any = true;
+    }
+  }
+  return any ? out : null;
+}
 
 route('POST', '/t/collect', async (req, res) => {
   let body;
@@ -263,6 +358,7 @@ route('POST', '/t/collect', async (req, res) => {
   const accepted = [];
   for (const e of events.slice(0, 50)) {
     if (!e || !VALID_EVENT_TYPES.includes(e.type) || !e.siteId || !e.visitorId) continue;
+    if (e.type === 'track' && !e.name) continue;
     accepted.push(
       store.insert('events', {
         type: e.type,
@@ -271,6 +367,10 @@ route('POST', '/t/collect', async (req, res) => {
         experimentId: e.experimentId ? String(e.experimentId) : null,
         variantId: e.variantId ? String(e.variantId) : null,
         goal: e.goal ? String(e.goal) : null,
+        name: e.name ? String(e.name).slice(0, 100) : null,
+        value: typeof e.value === 'number' && isFinite(e.value) ? e.value : null,
+        ft: sanitizeTouch(e.ft),
+        lt: sanitizeTouch(e.lt),
         url: e.url ? String(e.url).slice(0, 500) : null,
       })
     );

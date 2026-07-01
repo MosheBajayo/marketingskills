@@ -130,6 +130,60 @@ const PLAYBOOKS = [
     skill: 'referral-program',
   },
   {
+    id: 'ads-creative-testing',
+    category: 'paid-ads',
+    title: 'Run a weekly creative testing cadence',
+    impact: 'high', effort: 'medium',
+    description:
+      'Test 3–5 new creative concepts per week against your control ad. Vary the hook (first 3 seconds / first line), not just the visuals. Kill anything below your account-average CTR after ~5,000 impressions.',
+    skill: 'ad-creative',
+  },
+  {
+    id: 'ads-landing-match',
+    category: 'paid-ads',
+    title: 'Match landing page message to the ad',
+    impact: 'high', effort: 'low',
+    description:
+      'The headline, offer, and creative style of the landing page must mirror the ad that was clicked. Message mismatch is the most common cause of high-CTR/low-CVR campaigns — check any campaign whose CVR trails the site average.',
+    skill: 'paid-ads',
+  },
+  {
+    id: 'ads-utm-discipline',
+    category: 'paid-ads',
+    title: 'Enforce UTM discipline on every placement',
+    impact: 'high', effort: 'low',
+    description:
+      'Every ad, email, and social link gets utm_source / utm_medium / utm_campaign that exactly match your campaign entries here (lowercase, no spaces). Use the UTM builder on the Channels page. Untagged spend is unmeasurable spend.',
+    skill: 'analytics-tracking',
+  },
+  {
+    id: 'ads-retargeting-split',
+    category: 'paid-ads',
+    title: 'Split prospecting and retargeting budgets',
+    impact: 'medium', effort: 'low',
+    description:
+      'Retargeting always shows a better ROAS because it harvests demand prospecting created. Report them separately (distinct utm_campaign values), and judge prospecting on blended ROAS, not last-click.',
+    skill: 'paid-ads',
+  },
+  {
+    id: 'ads-exclusions',
+    category: 'paid-ads',
+    title: 'Exclude recent purchasers from acquisition campaigns',
+    impact: 'medium', effort: 'low',
+    description:
+      'Sync a purchaser audience and exclude it from prospecting for 30–60 days. Spending acquisition budget on people who already bought inflates ROAS and wastes reach.',
+    skill: 'paid-ads',
+  },
+  {
+    id: 'full-funnel-view',
+    category: 'measurement',
+    title: 'Review the funnel by channel, weekly',
+    impact: 'high', effort: 'low',
+    description:
+      'Look at visit → add-to-cart → checkout → purchase per channel, not just blended. A channel with strong add-to-cart but weak purchase has a checkout problem; weak add-to-cart is a landing-page or audience problem. Fix the right stage.',
+    skill: 'analytics-tracking',
+  },
+  {
     id: 'winback-flow',
     category: 'retention',
     title: 'Win-back flow at the repurchase window',

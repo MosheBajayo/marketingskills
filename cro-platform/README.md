@@ -7,10 +7,13 @@ A self-contained conversion rate optimization platform MVP. **Zero dependencies*
 | Module | Description |
 |--------|-------------|
 | **A/B Experiments** | Create multi-variant tests with weighted traffic splits. Deterministic visitor bucketing (FNV-1a), two-proportion z-test significance, Wilson confidence intervals, sample-ratio-mismatch (SRM) detection, and required-sample-size guidance. |
-| **Tracking snippet** | One `<script>` tag for any storefront (Shopify, WooCommerce, custom). Assigns visitors to variants, applies DOM changes (text/HTML/style/hide) without code deploys, and tracks pageviews + conversions via `sendBeacon`. |
+| **Tracking snippet** | One `<script>` tag for any storefront (Shopify, WooCommerce, custom). Assigns visitors to variants, applies DOM changes (text/HTML/style/hide) without code deploys, and tracks pageviews, funnel steps, and conversions with revenue via `sendBeacon`. |
+| **Ads & attribution** | Captures UTMs, `gclid`/`fbclid`/`ttclid` click IDs, and referrers as first touch (persisted) and last touch (per session). Channel report with visitors, CVR, revenue, and — once you add campaign spend — ROAS, CPA, CPC, CTR per source/medium/campaign, under first- or last-touch models. Includes a UTM link builder. |
+| **Funnel analytics** | Visit → add-to-cart → begin-checkout → purchase with per-stage drop-off and automatic biggest-leak detection, so you fix the right stage. |
+| **Insights engine** | The full picture: cross-references spend, attribution, funnel behavior, tracking hygiene, and experiment results into prioritized findings (scale/kill campaigns, creative fatigue, UTM mismatches, funnel leaks, significant winners, SRM alarms). |
 | **CRO Audits** | Fetches any URL and scores it against 16 conversion heuristics: value proposition, CTAs, social proof, trust signals, form friction, mobile readiness, page weight, and more. Produces a graded report and a prioritized action plan. |
-| **Playbooks** | A curated library of DTC CRO plays (landing page, product page, checkout, email capture, retention), each mapped to a skill in this repo's `skills/` directory for full methodology. |
-| **Dashboard** | Vanilla-JS single-page app: program overview, site management, experiment results with significance badges, audit reports, and snippet install guide. |
+| **Playbooks** | A curated library of DTC CRO and paid-ads plays (landing page, product page, checkout, email capture, retention, creative testing, UTM discipline), each mapped to a skill in this repo's `skills/` directory for full methodology. |
+| **Dashboard** | Vanilla-JS single-page app: program overview with revenue/spend/ROAS, insights, channels, funnel, experiments with significance badges, audit reports, and snippet install guide. |
 
 ## Quick start
 
@@ -55,15 +58,34 @@ npm test               # node --test: stats, experiments, audit engine, full API
    ```
 6. **Read results**: the experiment page shows per-variant rates, 95% confidence intervals, relative uplift, p-values (two-proportion z-test, significant at p < 0.05), an SRM validity check, and how many visitors per variant you need for 80% power.
 
+## Measuring ads performance end to end
+
+1. **Tag every ad** with UTMs (use the UTM builder on the Ads & Channels page): `?utm_source=meta&utm_medium=cpc&utm_campaign=prospecting-broad`. The snippet also auto-detects `gclid`/`fbclid`/`ttclid` click IDs.
+2. **Track the funnel** with markup or JS:
+   ```html
+   <button data-cro-track="add_to_cart">Add to Cart</button>
+   ```
+   ```js
+   window.CRO.track('begin_checkout');
+   ```
+3. **Pass revenue on conversion** so ROAS can be computed:
+   ```js
+   window.CRO.convert('purchase', { value: orderTotal });
+   ```
+4. **Add campaign spend** on the Ads & Channels page (or `POST /api/campaigns`) with UTMs that exactly match the ads. For automated pulls from ad platforms, see `tools/integrations/google-ads.md` and `tools/integrations/composio.md` (Meta Ads / LinkedIn Ads) in this repo.
+5. **Read the full picture**: the Channels page shows visitors, CVR, revenue, ROAS, CPA, CPC, and CTR per channel (first- or last-touch); the Funnel page shows where visitors leak; the Insights page cross-references all of it into prioritized actions.
+
 ## Architecture
 
 ```
 cro-platform/
 ├── server.js                  # HTTP server: REST API + tracking endpoints + static dashboard
 ├── lib/
-│   ├── store.js               # JSON-file persistence (sites, experiments, events, audits)
+│   ├── store.js               # JSON-file persistence (sites, experiments, events, audits, campaigns)
 │   ├── stats.js               # z-test, Wilson CI, chi-square SRM, sample-size calc
 │   ├── experiments.js         # validation, FNV-1a bucketing, results computation
+│   ├── attribution.js         # channel derivation, channel report (ROAS/CPA), funnel report
+│   ├── insights.js            # full-picture insights engine (spend × funnel × experiments)
 │   ├── audit.js               # heuristic page-audit engine (16 weighted checks)
 │   ├── recommendations.js     # playbook library mapped to skills/ in this repo
 │   └── snippet.template.js    # embeddable client snippet (site ID templated in)
@@ -75,11 +97,15 @@ cro-platform/
 ### API surface
 
 ```
-GET  /api/overview                        program-level metrics
+GET  /api/overview                        program-level metrics (incl. revenue, spend, ROAS)
 GET|POST /api/sites                       manage brand sites
 GET|POST /api/experiments                 manage experiments
 POST /api/experiments/:id/status          start/stop ({status: running|stopped|draft})
 GET  /api/experiments/:id/results         computed results + significance + SRM
+GET|POST /api/campaigns                   ad spend entries (utmSource/Medium/Campaign, spend, clicks, impressions)
+GET  /api/channels?model=last|first       attribution report: visitors, CVR, revenue, ROAS, CPA per channel
+GET  /api/funnel                          funnel stages with drop-off + biggest-leak detection
+GET  /api/insights                        prioritized full-picture findings
 GET|POST /api/audits                      run/read CRO audits ({url} or {html})
 GET  /api/playbooks?category=             recommendation library
 
@@ -94,5 +120,6 @@ Data persists to `data/db.json` (gitignored). Point `DATA_FILE` elsewhere to rel
 
 - JSON-file storage — swap `lib/store.js` for SQLite/Postgres for production scale.
 - No auth — add API keys per site before exposing publicly.
-- Conversion attribution is per-visitor per-experiment; revenue/AOV tracking is a natural next metric.
+- Campaign spend is entered manually (UI or API); automated ad-platform sync via the MCP integrations in `tools/` is the upgrade path.
+- Attribution is single-touch (first or last); multi-touch/position-based models are a natural extension on the same event data.
 - Audit engine is regex-heuristic; a headless-browser audit (LCP, real above-the-fold) is the upgrade path.

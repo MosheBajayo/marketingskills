@@ -38,7 +38,10 @@
       <div class="stars">★★★★★ 4.8 · 2,140 verified reviews</div>
       <p class="price"><s>$62</s> <strong>$48</strong> — limited time</p>
       <p style="margin-bottom:20px">Visibly brighter, glowing skin in 14 days or your money back. Clean, vegan, dermatologist-tested.</p>
-      <button class="cta" data-cro-convert="purchase">Add to Cart</button>
+      <button class="cta" id="add-to-cart" data-cro-track="add_to_cart">Add to Cart</button>
+      <span id="mini-cart" style="display:none">
+        <button class="cta" id="checkout-btn" style="background:#d99a2b;color:#2b2620;margin-left:8px">Checkout — $48</button>
+      </span>
       <p class="shipping">✓ Free shipping over $40 · ✓ Free 30-day returns · ✓ Secure checkout</p>
     </div>
   </section>
@@ -63,12 +66,26 @@
       var d = document.getElementById('debug');
       if (!window.CRO) { d.textContent = 'Snippet not loaded — is the server running?'; return; }
       var lines = ['visitor: ' + window.CRO.visitorId];
+      var lt = window.CRO.touches && window.CRO.touches.lt;
+      lines.push('channel: ' + (lt && lt.source ? lt.source + ' / ' + (lt.medium || '') : 'direct') +
+        ' <a href="?utm_source=meta&utm_medium=cpc&utm_campaign=prospecting-broad" style="color:#f4c98a">(simulate ad click)</a>');
       var names = Object.keys(window.CRO.assignments);
       if (names.length) names.forEach(function (n) { lines.push(n + ' → ' + window.CRO.assignments[n].name); });
       else lines.push('no running experiments target this page');
-      lines.push('click "Add to Cart" to fire a conversion');
+      lines.push('Add to Cart → Checkout fires the full funnel + $48 purchase');
       d.innerHTML = lines.join('<br>');
     }, 800);
+
+    document.getElementById('add-to-cart').addEventListener('click', function () {
+      document.getElementById('mini-cart').style.display = 'inline';
+      this.textContent = 'In cart ✓';
+    });
+    document.getElementById('checkout-btn').addEventListener('click', function () {
+      window.CRO.track('begin_checkout');
+      window.CRO.convert('purchase', { value: 48 });
+      this.textContent = 'Order placed ✓';
+      this.disabled = true;
+    });
   </script>
 </body>
 </html>
