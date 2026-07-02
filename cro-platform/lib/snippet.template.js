@@ -5,11 +5,17 @@
  *  - Assigns each visitor a stable anonymous id (localStorage).
  *  - Captures UTM parameters + referrer as first touch (persisted) and
  *    last touch (per session) so every event carries ad attribution.
- *  - Fetches running experiments and deterministically buckets the visitor.
+ *  - Evaluates audience segments client-side (device, new vs returning,
+ *    channel, path, time) and tags every event with the matched segments.
+ *  - Fetches running experiments and deterministically buckets the visitor;
+ *    experiments with an audience only run for visitors in that segment.
+ *  - Applies personalization experiences to matching segments, holding back
+ *    a control share so the lift is measurable.
  *  - Applies variant DOM changes (text / html / style / hide) before paint settles.
- *  - Sends pageview + assignment events; exposes:
+ *  - Sends pageview + assignment + personalization events; exposes:
  *      window.CRO.track(name)                 — funnel steps (add_to_cart, begin_checkout…)
  *      window.CRO.convert(goal, {value: 48})  — conversions with optional revenue
+ *      window.CRO.segments                    — matched segment ids
  *  - Auto-tracks clicks on [data-cro-track="step"] and [data-cro-convert="goal"].
  */
 (function () {
@@ -72,6 +78,63 @@
     return { ft: ft, lt: lt };
   }
 
+  // ---- audience segmentation (rules evaluated client-side) -----------
+  function visitorAttrs() {
+    var visits = 1;
+    try {
+      if (!sessionStorage.getItem('_cro_session')) {
+        sessionStorage.setItem('_cro_session', '1');
+        visits = 1 + Number(localStorage.getItem('_cro_visits') || 0);
+        localStorage.setItem('_cro_visits', String(visits));
+      } else {
+        visits = Number(localStorage.getItem('_cro_visits') || 1);
+      }
+    } catch (e) { /* storage unavailable */ }
+    var now = new Date();
+    var lt = TOUCHES.lt || {};
+    return {
+      device: (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) ||
+        /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'mobile' : 'desktop',
+      returning: visits > 1,
+      visits: visits,
+      source: lt.source || '',
+      medium: lt.medium || '',
+      campaign: lt.campaign || '',
+      referrer: document.referrer || '',
+      path: location.pathname,
+      hour: now.getHours(),
+      day: now.getDay(),
+    };
+  }
+
+  // Mirrors lib/segments.js ruleMatches — keep in sync.
+  function ruleMatches(rule, attrs) {
+    var raw = attrs[rule.attr];
+    var actual = raw == null ? '' : String(raw).toLowerCase();
+    var expected = String(rule.value).toLowerCase();
+    switch (rule.op) {
+      case 'is': return actual === expected;
+      case 'is_not': return actual !== expected;
+      case 'contains': return actual.indexOf(expected) !== -1;
+      case 'not_contains': return actual.indexOf(expected) === -1;
+      case 'gt': return Number(raw) > Number(rule.value);
+      case 'lt': return Number(raw) < Number(rule.value);
+      default: return false;
+    }
+  }
+
+  function matchSegments(segs, attrs) {
+    var matched = [];
+    (segs || []).forEach(function (s) {
+      var ok = true;
+      for (var i = 0; i < s.rules.length; i++) {
+        if (!ruleMatches(s.rules[i], attrs)) { ok = false; break; }
+      }
+      if (ok) matched.push(s.id);
+    });
+    return matched;
+  }
+
   // FNV-1a — must match lib/experiments.js server-side bucketing.
   function fnv1a(str) {
     var h = 0x811c9dc5;
@@ -116,6 +179,7 @@
     event.url = location.href;
     event.ft = TOUCHES.ft;
     event.lt = TOUCHES.lt;
+    event.segments = MATCHED;
     queue.push(event);
     if (!flushTimer) flushTimer = setTimeout(flush, 400);
   }
@@ -132,11 +196,17 @@
 
   var VID = visitorId();
   var TOUCHES = getTouches();
+  var ATTRS = visitorAttrs();
+  var MATCHED = []; // segment ids matched for this visitor (filled from config)
   var assignments = {}; // experiment name -> variant
+  var experiences = {}; // personalization name -> group
 
   window.CRO = {
     visitorId: VID,
     assignments: assignments,
+    experiences: experiences,
+    segments: MATCHED,
+    attrs: ATTRS,
     touches: TOUCHES,
     variant: function (experimentName) {
       return assignments[experimentName] ? assignments[experimentName].name : null;
@@ -157,21 +227,40 @@
     },
   };
 
-  track({ type: 'pageview' });
-
   fetch(BASE + '/t/config?site=' + encodeURIComponent(SITE_ID))
     .then(function (r) { return r.json(); })
     .then(function (cfg) {
+      // Evaluate segments first — experiments and personalizations target them,
+      // and every event (including this pageview) carries the matched ids.
+      matchSegments(cfg.segments, ATTRS).forEach(function (id) { MATCHED.push(id); });
+      track({ type: 'pageview' });
+
       (cfg.experiments || []).forEach(function (exp) {
         // Optional page targeting: only run when exp.url is a substring of the location.
         if (exp.url && location.href.indexOf(exp.url) === -1) return;
+        // Audience targeting: only bucket visitors in the experiment's segment.
+        if (exp.segmentId && MATCHED.indexOf(exp.segmentId) === -1) return;
         var variant = pickVariant(exp, VID);
         assignments[exp.name] = { id: variant.id, name: variant.name, experimentId: exp.id, goal: exp.goal };
         applyChanges(variant);
         track({ type: 'assignment', experimentId: exp.id, variantId: variant.id });
       });
+
+      (cfg.personalizations || []).forEach(function (px) {
+        if (px.url && location.href.indexOf(px.url) === -1) return;
+        if (px.segmentId && MATCHED.indexOf(px.segmentId) === -1) return;
+        // Deterministic holdback: a slice of the audience keeps the default
+        // experience as the control arm. Must match lib/personalization.js.
+        var group = (fnv1a('px:' + px.id + ':' + VID) % 100) < (px.holdback || 0) ? 'holdback' : 'experience';
+        experiences[px.name] = group;
+        if (group === 'experience') applyChanges(px);
+        track({ type: 'personalization', personalizationId: px.id, group: group });
+      });
     })
-    .catch(function () { /* platform unreachable — fail open, no changes applied */ });
+    .catch(function () {
+      // Platform unreachable — fail open: no changes, still log the view.
+      track({ type: 'pageview' });
+    });
 
   document.addEventListener('click', function (e) {
     if (!e.target || !e.target.closest) return;

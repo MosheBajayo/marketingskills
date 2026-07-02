@@ -162,13 +162,15 @@ function experimentTable(experiments) {
 }
 
 pages.experiments = async () => {
-  const [experiments, sites] = await Promise.all([api('/api/experiments'), api('/api/sites')]);
+  const [experiments, sites, segs] = await Promise.all([
+    api('/api/experiments'), api('/api/sites'), api('/api/segments'),
+  ]);
   main.innerHTML = `
     <h1>Experiments</h1>
     <p class="page-sub">A/B tests with deterministic bucketing and significance testing.</p>
     <div class="card">
       <h3>New experiment</h3>
-      ${sites.length ? experimentForm(sites) : '<p class="muted">Add a site first on the <a class="back-link" href="#/sites">Sites page</a>.</p>'}
+      ${sites.length ? experimentForm(sites, segs) : '<p class="muted">Add a site first on the <a class="back-link" href="#/sites">Sites page</a>.</p>'}
     </div>
     <h2>All experiments</h2>
     ${experiments.length ? `<div class="card" style="padding:0">${experimentTable(experiments)}</div>`
@@ -178,7 +180,7 @@ pages.experiments = async () => {
   bindExperimentForm();
 };
 
-function experimentForm(sites) {
+function experimentForm(sites, segs = []) {
   return `<form id="exp-form" class="panel-form">
     <div class="form-row">
       <div><label>Name</label><input name="name" placeholder="Hero headline test" required></div>
@@ -190,6 +192,8 @@ function experimentForm(sites) {
     <div class="form-row">
       <div><label>Hypothesis (optional)</label><input name="hypothesis" placeholder="Outcome-focused headline will lift CTA clicks"></div>
       <div><label>Page targeting (URL contains — optional)</label><input name="url" placeholder="/products/"></div>
+      <div><label>Audience</label><select name="segmentId"><option value="">All visitors</option>
+        ${segs.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>
     </div>
     <div id="variants">
       ${variantBlock(0, 'Control')}${variantBlock(1, 'Variant B')}
@@ -248,7 +252,8 @@ function bindExperimentForm() {
         method: 'POST',
         body: {
           name: fd.get('name'), siteId: fd.get('siteId'), goal: fd.get('goal'),
-          hypothesis: fd.get('hypothesis'), url: fd.get('url'), variants,
+          hypothesis: fd.get('hypothesis'), url: fd.get('url'),
+          segmentId: fd.get('segmentId') || undefined, variants,
         },
       });
       toast('Experiment created');
@@ -257,15 +262,19 @@ function bindExperimentForm() {
   });
 }
 
-pages.experimentDetail = async (id) => {
-  const [exp, results] = await Promise.all([
-    api(`/api/experiments/${id}`), api(`/api/experiments/${id}/results`),
+pages.experimentDetail = async (id, segmentFilter = '') => {
+  const [exp, results, segs] = await Promise.all([
+    api(`/api/experiments/${id}`),
+    api(`/api/experiments/${id}/results${segmentFilter ? `?segment=${encodeURIComponent(segmentFilter)}` : ''}`),
+    api('/api/segments'),
   ]);
+  const audience = exp.segmentId ? segs.find((s) => s.id === exp.segmentId) : null;
   const control = results.variants[0];
   main.innerHTML = `
     <a class="back-link" href="#/experiments">← All experiments</a>
     <h1 style="margin-top:10px">${esc(exp.name)} ${statusBadge(exp.status)}</h1>
     <p class="page-sub">Goal: <strong>${esc(exp.goal)}</strong>
+      · Audience: <strong>${audience ? esc(audience.name) : 'All visitors'}</strong>
       ${exp.hypothesis ? ` · Hypothesis: ${esc(exp.hypothesis)}` : ''}
       ${exp.url ? ` · Targets URLs containing <code>${esc(exp.url)}</code>` : ''}</p>
     <div class="row-actions" style="margin-bottom:20px">
@@ -275,7 +284,13 @@ pages.experimentDetail = async (id) => {
     </div>
     ${results.srm.srm ? `<div class="card" style="border-color:var(--red);margin-bottom:14px">
       ⚠️ <strong>Sample ratio mismatch detected</strong> (p=${results.srm.pValue}). Traffic split doesn't match variant weights — results may be invalid.</div>` : ''}
-    <h2>Results</h2>
+    <h2>Results${segmentFilter ? ' <span class="muted">(segment breakdown)</span>' : ''}</h2>
+    <div class="inline-form" style="margin-bottom:12px">
+      <div style="max-width:280px"><label>Break down by audience</label>
+        <select id="seg-breakdown"><option value="">All visitors</option>
+          ${segs.map((s) => `<option value="${esc(s.id)}" ${segmentFilter === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+        </select></div>
+    </div>
     <div class="card" style="padding:0"><table>
       <tr><th>Variant</th><th>Visitors</th><th>Conversions</th><th>Rate</th><th>95% CI</th><th>Uplift vs control</th><th>Significance</th></tr>
       ${results.variants.map((v, i) => {
@@ -304,6 +319,8 @@ pages.experimentDetail = async (id) => {
       ${v.changes.length ? `<pre class="code mt">${esc(JSON.stringify(v.changes, null, 2))}</pre>` : '<div class="muted mt">No DOM changes (control experience).</div>'}
     </div>`).join('')}
   `;
+  document.getElementById('seg-breakdown').addEventListener('change', (e) =>
+    pages.experimentDetail(id, e.target.value));
   main.querySelectorAll('[data-status]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       await api(`/api/experiments/${id}/status`, { method: 'POST', body: { status: btn.dataset.status } });
@@ -580,12 +597,43 @@ function roasBadge(r) {
 
 // ---------- funnel ----------
 
-pages.funnel = async () => {
-  const funnel = await api('/api/funnel');
+pages.funnel = async (state = {}) => {
+  const qs = new URLSearchParams();
+  if (state.funnelId) qs.set('funnelId', state.funnelId);
+  if (state.segment) qs.set('segment', state.segment);
+  if (state.source) qs.set('source', state.source);
+  const [funnel, funnels, segs, channels] = await Promise.all([
+    api('/api/funnel' + (qs.toString() ? `?${qs}` : '')),
+    api('/api/funnels'), api('/api/segments'), api('/api/channels'),
+  ]);
+  const sources = [...new Set(channels.rows.filter((r) => r.visitors > 0).map((r) => r.source))];
   const maxVisitors = Math.max(1, ...funnel.stages.map((s) => s.visitors));
   main.innerHTML = `
-    <h1>Funnel</h1>
-    <p class="page-sub">Visit → add to cart → checkout → purchase. Track steps with <code>CRO.track('add_to_cart')</code> or <code>data-cro-track</code> attributes.</p>
+    <h1>Funnels</h1>
+    <p class="page-sub">Build any funnel from pageviews, tracked steps, and conversions — then compare it by audience and channel.</p>
+    <div class="pill-row">
+      <span class="pill ${!state.funnelId ? 'active' : ''}" data-funnel="">Default DTC funnel</span>
+      ${funnels.map((f) => `<span class="pill ${state.funnelId === f.id ? 'active' : ''}" data-funnel="${esc(f.id)}">${esc(f.name)}</span>`).join('')}
+      <span class="pill" id="new-funnel-toggle">+ New funnel</span>
+    </div>
+    <div class="inline-form" style="margin-bottom:16px">
+      <div><label>Audience filter</label><select id="segment-filter"><option value="">All visitors</option>
+        ${segs.map((s) => `<option value="${esc(s.id)}" ${state.segment === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
+      <div><label>Channel filter (source)</label><select id="source-filter"><option value="">All channels</option>
+        ${sources.map((s) => `<option value="${esc(s)}" ${state.source === s ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
+    </div>
+    <div class="card hidden" id="funnel-builder">
+      <h3>New funnel</h3>
+      <form id="funnel-form" class="panel-form">
+        <div><label>Name</label><input name="name" placeholder="Quiz funnel" required></div>
+        <div id="steps">${funnelStepRow(0)}${funnelStepRow(1)}</div>
+        <div class="row-actions">
+          <button type="button" class="secondary" id="add-step">+ Add step</button>
+          <button type="submit">Create funnel</button>
+        </div>
+      </form>
+    </div>
+    <h2>${esc(funnel.name)}${state.segment || state.source ? ' <span class="muted">(filtered)</span>' : ''}</h2>
     <div class="card">
       ${funnel.stages.map((s, i) => `
         <div style="padding:12px 0 ${i === funnel.stages.length - 1 ? '0' : '12px'}">
@@ -605,8 +653,60 @@ pages.funnel = async () => {
     ${funnel.leak ? `<div class="card mt" style="border-color:var(--amber)">
       🔍 <strong>Biggest leak:</strong> ${esc(funnel.leak.from)} → ${esc(funnel.leak.to)} loses ${pct(funnel.leak.loss, 1)} of visitors.
       This step is your highest-leverage experiment target — see <a class="back-link" href="#/insights">Insights</a> for the recommended play.</div>` : ''}
+    ${state.funnelId ? `<div class="row-actions mt"><button class="danger small" id="del-funnel">Delete this funnel</button></div>` : ''}
   `;
+  main.querySelectorAll('[data-funnel]').forEach((pill) =>
+    pill.addEventListener('click', () => pages.funnel({ ...state, funnelId: pill.dataset.funnel || undefined }))
+  );
+  document.getElementById('segment-filter').addEventListener('change', (e) =>
+    pages.funnel({ ...state, segment: e.target.value || undefined }));
+  document.getElementById('source-filter').addEventListener('change', (e) =>
+    pages.funnel({ ...state, source: e.target.value || undefined }));
+  document.getElementById('new-funnel-toggle').addEventListener('click', () =>
+    document.getElementById('funnel-builder').classList.toggle('hidden'));
+  let stepCount = 2;
+  document.getElementById('add-step').addEventListener('click', () => {
+    document.getElementById('steps').insertAdjacentHTML('beforeend', funnelStepRow(stepCount++));
+  });
+  document.getElementById('funnel-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const steps = [];
+    for (let i = 0; i < stepCount; i++) {
+      if (fd.get(`s-label-${i}`) == null) continue;
+      const type = fd.get(`s-type-${i}`);
+      steps.push({
+        label: fd.get(`s-label-${i}`), type,
+        name: type === 'track' ? fd.get(`s-match-${i}`) : undefined,
+        goal: type === 'conversion' ? fd.get(`s-match-${i}`) || undefined : undefined,
+        urlContains: type === 'pageview' ? fd.get(`s-match-${i}`) || undefined : undefined,
+      });
+    }
+    try {
+      const created = await api('/api/funnels', { method: 'POST', body: { name: fd.get('name'), steps } });
+      toast('Funnel created');
+      pages.funnel({ funnelId: created.id });
+    } catch (err) { toast(err.message, true); }
+  });
+  const delBtn = document.getElementById('del-funnel');
+  if (delBtn) delBtn.addEventListener('click', async () => {
+    if (!confirm('Delete this funnel? (Definition only — events are kept.)')) return;
+    await api(`/api/funnels/${state.funnelId}`, { method: 'DELETE' });
+    pages.funnel({});
+  });
 };
+
+function funnelStepRow(i) {
+  return `<div class="form-row" style="margin-bottom:8px">
+    <div><label>Step ${i + 1} label</label><input name="s-label-${i}" placeholder="${i === 0 ? 'Visited site' : 'Step label'}" ${i < 2 ? 'required' : ''}></div>
+    <div><label>Matches</label><select name="s-type-${i}">
+      <option value="pageview">Pageview</option>
+      <option value="track" ${i > 0 ? 'selected' : ''}>Tracked step</option>
+      <option value="conversion">Conversion</option>
+    </select></div>
+    <div><label>Step name / goal / URL contains</label><input name="s-match-${i}" placeholder="add_to_cart · purchase · /products/"></div>
+  </div>`;
+}
 
 // ---------- insights ----------
 
@@ -631,6 +731,208 @@ pages.insights = async () => {
       : '<div class="empty">Not enough data yet — install the snippet, add campaign spend, and come back.</div>'}
   `;
 };
+
+// ---------- audiences (segments) ----------
+
+const SEGMENT_ATTRS = [
+  { id: 'device', label: 'Device', hint: 'mobile | desktop' },
+  { id: 'returning', label: 'Returning visitor', hint: 'true | false' },
+  { id: 'visits', label: 'Session count', hint: 'number' },
+  { id: 'source', label: 'UTM source', hint: 'meta, google…' },
+  { id: 'medium', label: 'UTM medium', hint: 'cpc, email…' },
+  { id: 'campaign', label: 'UTM campaign', hint: 'prospecting-broad' },
+  { id: 'referrer', label: 'Referrer', hint: 'URL substring' },
+  { id: 'path', label: 'Page path', hint: '/products/' },
+  { id: 'hour', label: 'Hour of day', hint: '0–23' },
+  { id: 'day', label: 'Day of week', hint: '0=Sun … 6=Sat' },
+];
+const SEGMENT_OPS = ['is', 'is_not', 'contains', 'not_contains', 'gt', 'lt'];
+
+function ruleRow(i) {
+  return `<div class="form-row rule-row" data-rule="${i}">
+    <div><label>Attribute</label><select name="r-attr-${i}">
+      ${SEGMENT_ATTRS.map((a) => `<option value="${a.id}">${a.label}</option>`).join('')}
+    </select></div>
+    <div><label>Condition</label><select name="r-op-${i}">
+      ${SEGMENT_OPS.map((o) => `<option value="${o}">${o.replace('_', ' ')}</option>`).join('')}
+    </select></div>
+    <div><label>Value</label><input name="r-value-${i}" placeholder="${esc(SEGMENT_ATTRS[0].hint)}" required></div>
+  </div>`;
+}
+
+function describeRules(rules) {
+  return rules.map((r) => `${r.attr} ${r.op.replace('_', ' ')} "${r.value}"`).join(' AND ');
+}
+
+pages.audiences = async () => {
+  const segs = await api('/api/segments');
+  main.innerHTML = `
+    <h1>Audiences</h1>
+    <p class="page-sub">Segments are evaluated in the visitor's browser (device, channel, behavior) and can target experiments and personalizations. All rules must match (AND).</p>
+    <div class="card">
+      <h3>New segment</h3>
+      <form id="segment-form" class="panel-form">
+        <div class="form-row">
+          <div><label>Name</label><input name="name" placeholder="Mobile paid traffic" required></div>
+          <div><label>Description (optional)</label><input name="description" placeholder="Mobile visitors arriving from paid channels"></div>
+        </div>
+        <div id="rules">${ruleRow(0)}</div>
+        <div class="row-actions">
+          <button type="button" class="secondary" id="add-rule">+ Add rule (AND)</button>
+          <button type="submit">Create segment</button>
+        </div>
+      </form>
+    </div>
+    <h2>Your segments</h2>
+    ${segs.length ? `<div class="card" style="padding:0"><table>
+      <tr><th>Name</th><th>Rules</th><th>Visitors</th><th>Conv.</th><th>CVR</th><th>Revenue</th><th></th></tr>
+      ${segs.map((s) => `<tr>
+        <td><strong>${esc(s.name)}</strong>${s.description ? `<div class="muted" style="font-size:12px">${esc(s.description)}</div>` : ''}</td>
+        <td class="muted" style="font-size:12.5px">${esc(describeRules(s.rules))}</td>
+        <td>${s.stats.visitors.toLocaleString()}</td>
+        <td>${s.stats.conversions.toLocaleString()}</td>
+        <td>${pct(s.stats.cvr, 1)}</td>
+        <td>${money(s.stats.revenue)}</td>
+        <td><button class="danger small" data-del-segment="${esc(s.id)}">Delete</button></td>
+      </tr>`).join('')}
+    </table></div>` : '<div class="empty">No segments yet. Segment stats populate as tagged events arrive.</div>'}
+  `;
+  let ruleCount = 1;
+  document.getElementById('add-rule').addEventListener('click', () => {
+    document.getElementById('rules').insertAdjacentHTML('beforeend', ruleRow(ruleCount++));
+  });
+  document.getElementById('segment-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const rules = [];
+    for (let i = 0; i < ruleCount; i++) {
+      if (fd.get(`r-attr-${i}`) == null) continue;
+      rules.push({ attr: fd.get(`r-attr-${i}`), op: fd.get(`r-op-${i}`), value: fd.get(`r-value-${i}`) });
+    }
+    try {
+      await api('/api/segments', { method: 'POST', body: { name: fd.get('name'), description: fd.get('description'), rules } });
+      toast('Segment created');
+      render();
+    } catch (err) { toast(err.message, true); }
+  });
+  main.querySelectorAll('[data-del-segment]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      try {
+        await api(`/api/segments/${btn.dataset.delSegment}`, { method: 'DELETE' });
+        toast('Segment deleted');
+        render();
+      } catch (err) { toast(err.message, true); }
+    })
+  );
+};
+
+// ---------- personalize (experiences) ----------
+
+pages.personalize = async () => {
+  const [pxs, segs, sites] = await Promise.all([
+    api('/api/personalizations'), api('/api/segments'), api('/api/sites'),
+  ]);
+  const results = await Promise.all(pxs.map((p) => api(`/api/personalizations/${p.id}/results`)));
+  main.innerHTML = `
+    <h1>Personalize</h1>
+    <p class="page-sub">Serve a targeted experience to an audience, keeping a holdback control so the lift is measured like an A/B test.</p>
+    <div class="card">
+      <h3>New experience</h3>
+      ${sites.length ? `<form id="px-form" class="panel-form">
+        <div class="form-row">
+          <div><label>Name</label><input name="name" placeholder="Free-shipping bar for paid mobile traffic" required></div>
+          <div><label>Site</label><select name="siteId">
+            ${sites.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Audience</label><select name="segmentId"><option value="">All visitors</option>
+            ${segs.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>
+          <div><label>Conversion goal</label><input name="goal" value="purchase" required></div>
+          <div><label>Holdback % (control)</label><input name="holdback" type="number" min="0" max="50" value="10"></div>
+          <div><label>Page targeting (URL contains)</label><input name="url" placeholder="/products/"></div>
+        </div>
+        <div class="variant-block">
+          <div class="form-row">
+            <div><label>DOM change selector</label><input name="selector" placeholder=".hero-title" required></div>
+            <div><label>Change type</label><select name="type">
+              <option value="text">Replace text</option><option value="html">Replace HTML</option>
+              <option value="style">Append CSS</option><option value="hide">Hide element</option>
+            </select></div>
+            <div><label>New value</label><input name="value" placeholder="Free express shipping on every order today"></div>
+          </div>
+        </div>
+        <div class="row-actions"><button type="submit">Create experience</button></div>
+      </form>` : '<p class="muted">Add a site first on the <a class="back-link" href="#/sites">Sites page</a>.</p>'}
+    </div>
+    <h2>Experiences</h2>
+    ${pxs.length ? pxs.map((p, idx) => personalizationCard(p, results[idx], segs)).join('')
+      : '<div class="empty">No experiences yet.</div>'}
+  `;
+  const form = document.getElementById('px-form');
+  if (form) form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    try {
+      await api('/api/personalizations', {
+        method: 'POST',
+        body: {
+          name: fd.get('name'), siteId: fd.get('siteId'), segmentId: fd.get('segmentId') || undefined,
+          goal: fd.get('goal'), url: fd.get('url'),
+          holdback: fd.get('holdback') === '' ? undefined : Number(fd.get('holdback')),
+          changes: [{ selector: fd.get('selector'), type: fd.get('type'), value: fd.get('value') || '' }],
+        },
+      });
+      toast('Experience created — start it when ready');
+      render();
+    } catch (err) { toast(err.message, true); }
+  });
+  main.querySelectorAll('[data-px-status]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      await api(`/api/personalizations/${btn.dataset.pxId}/status`, { method: 'POST', body: { status: btn.dataset.pxStatus } });
+      toast(`Experience ${btn.dataset.pxStatus}`);
+      render();
+    })
+  );
+  main.querySelectorAll('[data-del-px]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this experience?')) return;
+      await api(`/api/personalizations/${btn.dataset.delPx}`, { method: 'DELETE' });
+      render();
+    })
+  );
+};
+
+function personalizationCard(p, r, segs) {
+  const seg = p.segmentId ? segs.find((s) => s.id === p.segmentId) : null;
+  const [holdback, experience] = r.arms;
+  const t = r.vsHoldback;
+  return `<div class="card mt">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+      <div>
+        <h3 style="margin-bottom:4px">${esc(p.name)} ${statusBadge(p.status)}</h3>
+        <div class="muted" style="font-size:13px">
+          Audience: <strong>${seg ? esc(seg.name) : 'All visitors'}</strong>
+          · Goal: ${esc(p.goal)} · Holdback: ${p.holdback}%
+          ${p.url ? ` · URLs containing <code>${esc(p.url)}</code>` : ''}
+        </div>
+      </div>
+      <div class="row-actions">
+        ${p.status !== 'running' ? `<button class="small" data-px-status="running" data-px-id="${esc(p.id)}">▶ Start</button>` : ''}
+        ${p.status === 'running' ? `<button class="secondary small" data-px-status="stopped" data-px-id="${esc(p.id)}">■ Stop</button>` : ''}
+        <button class="danger small" data-del-px="${esc(p.id)}">Delete</button>
+      </div>
+    </div>
+    <table class="mt">
+      <tr><th>Arm</th><th>Visitors</th><th>Conversions</th><th>Rate</th><th>Revenue</th><th>Lift</th><th>Significance</th></tr>
+      <tr><td><strong>Holdback (control)</strong></td><td>${holdback.visitors.toLocaleString()}</td>
+        <td>${holdback.conversions.toLocaleString()}</td><td>${pct(holdback.rate)}</td><td>${money(holdback.revenue)}</td><td>—</td><td>—</td></tr>
+      <tr><td><strong>Experience</strong></td><td>${experience.visitors.toLocaleString()}</td>
+        <td>${experience.conversions.toLocaleString()}</td><td>${pct(experience.rate)}</td><td>${money(experience.revenue)}</td>
+        <td>${t ? upliftCell(t) : '—'}</td><td>${t ? sigCell(t) : '—'}</td></tr>
+    </table>
+    <pre class="code mt" style="font-size:12px">${esc(JSON.stringify(p.changes))}</pre>
+  </div>`;
+}
 
 // ---------- install ----------
 

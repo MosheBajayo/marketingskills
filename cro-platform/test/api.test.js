@@ -196,6 +196,114 @@ test('full product flow', async (t) => {
     assert.strictEqual(r.body.roas, 0.5);
   });
 
+  let segId, pxId, funnelId;
+
+  await t.test('segments CRUD with stats', async () => {
+    const bad = await call('POST', '/api/segments', { name: 'x', rules: [{ attr: 'bogus', op: 'is', value: '1' }] });
+    assert.strictEqual(bad.status, 400);
+    const r = await call('POST', '/api/segments', {
+      name: 'Meta traffic', rules: [{ attr: 'source', op: 'is', value: 'meta' }],
+    });
+    assert.strictEqual(r.status, 201);
+    segId = r.body.id;
+    const list = await call('GET', '/api/segments');
+    assert.ok(list.body.find((s) => s.id === segId).stats);
+  });
+
+  await t.test('segment-tagged events power segment filters', async () => {
+    await call('POST', '/t/collect', {
+      events: [
+        { type: 'pageview', siteId, visitorId: 'segv1', segments: [segId] },
+        { type: 'track', siteId, visitorId: 'segv1', name: 'add_to_cart', segments: [segId] },
+        { type: 'conversion', siteId, visitorId: 'segv1', goal: 'purchase', value: 30, segments: [segId] },
+      ],
+    });
+    const list = await call('GET', '/api/segments');
+    const seg = list.body.find((s) => s.id === segId);
+    assert.strictEqual(seg.stats.visitors, 1);
+    assert.strictEqual(seg.stats.revenue, 30);
+    const funnel = await call('GET', `/api/funnel?siteId=${siteId}&segment=${segId}`);
+    assert.strictEqual(funnel.body.stages[0].visitors, 1);
+  });
+
+  await t.test('experiment accepts audience and reports segment breakdown', async () => {
+    const r = await call('POST', '/api/experiments', {
+      name: 'Segmented test', siteId, goal: 'purchase', segmentId: segId,
+      variants: [{ name: 'Control' }, { name: 'B' }],
+    });
+    assert.strictEqual(r.body.segmentId, segId);
+    const cfgAfterStart = await call('POST', `/api/experiments/${r.body.id}/status`, { status: 'running' });
+    assert.strictEqual(cfgAfterStart.body.status, 'running');
+    const results = await call('GET', `/api/experiments/${r.body.id}/results?segment=${segId}`);
+    assert.strictEqual(results.body.segment, segId);
+    await call('DELETE', `/api/experiments/${r.body.id}`);
+  });
+
+  await t.test('personalization lifecycle: create, config exposure, impressions, results', async () => {
+    const bad = await call('POST', '/api/personalizations', { name: 'x', siteId, changes: [] });
+    assert.strictEqual(bad.status, 400);
+    const r = await call('POST', '/api/personalizations', {
+      name: 'Ship bar', siteId, segmentId: segId, holdback: 20,
+      changes: [{ selector: '.shipping', type: 'text', value: 'Free shipping!' }],
+    });
+    assert.strictEqual(r.status, 201);
+    pxId = r.body.id;
+    await call('POST', `/api/personalizations/${pxId}/status`, { status: 'running' });
+
+    const cfg = await call('GET', `/t/config?site=${siteId}`);
+    assert.strictEqual(cfg.body.personalizations.length, 1);
+    assert.ok(cfg.body.segments.find((s) => s.id === segId).rules.length);
+
+    await call('POST', '/t/collect', {
+      events: [
+        { type: 'personalization', siteId, visitorId: 'pxv1', personalizationId: pxId, group: 'experience' },
+        { type: 'personalization', siteId, visitorId: 'pxv2', personalizationId: pxId, group: 'holdback' },
+        { type: 'personalization', siteId, visitorId: 'pxv3', personalizationId: pxId, group: 'bogus' }, // rejected
+        { type: 'conversion', siteId, visitorId: 'pxv1', goal: 'purchase', value: 48 },
+      ],
+    });
+    const results = await call('GET', `/api/personalizations/${pxId}/results`);
+    const [holdback, experience] = results.body.arms;
+    assert.strictEqual(experience.visitors, 1);
+    assert.strictEqual(experience.conversions, 1);
+    assert.strictEqual(holdback.visitors, 1);
+    assert.strictEqual(holdback.conversions, 0);
+  });
+
+  await t.test('segment deletion blocked while personalization uses it', async () => {
+    const r = await call('DELETE', `/api/segments/${segId}`);
+    assert.strictEqual(r.status, 409);
+  });
+
+  await t.test('custom funnels: create and report with urlContains step', async () => {
+    const r = await call('POST', '/api/funnels', {
+      name: 'Cart funnel',
+      steps: [
+        { label: 'Added to cart', type: 'track', name: 'add_to_cart' },
+        { label: 'Purchased', type: 'conversion', goal: 'purchase' },
+      ],
+    });
+    assert.strictEqual(r.status, 201);
+    funnelId = r.body.id;
+    const report = await call('GET', `/api/funnel?siteId=${siteId}&funnelId=${funnelId}`);
+    assert.strictEqual(report.body.name, 'Cart funnel');
+    assert.strictEqual(report.body.stages.length, 2);
+    assert.ok(report.body.stages[0].visitors >= 1); // segv1 added to cart
+    const missing = await call('GET', '/api/funnel?funnelId=nope');
+    assert.strictEqual(missing.status, 404);
+  });
+
+  await t.test('funnel source filter', async () => {
+    const touch = { source: 'meta', medium: 'cpc', campaign: 'pros' };
+    await call('POST', '/t/collect', {
+      events: [{ type: 'track', siteId, visitorId: 'srcv1', name: 'add_to_cart', ft: touch, lt: touch }],
+    });
+    const r = await call('GET', `/api/funnel?siteId=${siteId}&funnelId=${funnelId}&source=meta`);
+    assert.ok(r.body.stages[0].visitors >= 1);
+    const none = await call('GET', `/api/funnel?siteId=${siteId}&funnelId=${funnelId}&source=pinterest`);
+    assert.strictEqual(none.body.stages[0].visitors, 0);
+  });
+
   await t.test('playbooks endpoint filters by category', async () => {
     const all = await call('GET', '/api/playbooks');
     assert.ok(all.body.playbooks.length >= 10);

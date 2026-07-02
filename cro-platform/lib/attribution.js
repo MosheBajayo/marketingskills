@@ -141,7 +141,53 @@ function eventMatchesStage(e, stage) {
   if (e.type !== stage.type) return false;
   if (stage.type === 'track') return e.name === stage.name;
   if (stage.type === 'conversion') return !stage.goal || e.goal === stage.goal;
+  if (stage.type === 'pageview') return !stage.urlContains || (e.url || '').includes(stage.urlContains);
   return true;
+}
+
+// ---- custom funnels (Superfunnel-style) ----
+
+const STEP_TYPES = ['pageview', 'track', 'conversion'];
+
+function validateFunnel(body) {
+  const errors = [];
+  if (!body.name) errors.push('name is required');
+  if (!Array.isArray(body.steps) || body.steps.length < 2) {
+    errors.push('at least 2 steps are required');
+  } else {
+    body.steps.forEach((s, i) => {
+      if (!s.label) errors.push(`steps[${i}].label is required`);
+      if (!STEP_TYPES.includes(s.type)) errors.push(`steps[${i}].type must be one of ${STEP_TYPES.join(', ')}`);
+      if (s.type === 'track' && !s.name) errors.push(`steps[${i}].name is required for track steps`);
+    });
+  }
+  return errors;
+}
+
+function normalizeFunnel(body) {
+  return {
+    name: String(body.name).trim(),
+    siteId: body.siteId || null,
+    steps: body.steps.map((s, i) => ({
+      id: s.id || `s${i}`,
+      label: String(s.label).trim(),
+      type: s.type,
+      name: s.type === 'track' ? String(s.name).trim() : undefined,
+      goal: s.type === 'conversion' && s.goal ? String(s.goal).trim() : undefined,
+      urlContains: s.type === 'pageview' && s.urlContains ? String(s.urlContains).trim() : undefined,
+    })),
+  };
+}
+
+// Restrict events to visitors whose attributed channel source matches
+// (last-touch). Used for funnel-by-channel comparison.
+function filterEventsBySource(events, source) {
+  const touches = visitorTouches(events, 'last');
+  const members = new Set();
+  for (const [visitorId, touch] of touches) {
+    if (deriveChannel(touch).source === String(source).toLowerCase()) members.add(visitorId);
+  }
+  return events.filter((e) => members.has(e.visitorId));
 }
 
 // Funnel report: unique visitors per stage + step and overall conversion.
@@ -179,4 +225,7 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-module.exports = { deriveChannel, channelKey, channelReport, funnelReport, DEFAULT_FUNNEL };
+module.exports = {
+  deriveChannel, channelKey, channelReport, funnelReport, DEFAULT_FUNNEL,
+  validateFunnel, normalizeFunnel, filterEventsBySource,
+};

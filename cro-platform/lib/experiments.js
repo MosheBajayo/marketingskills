@@ -34,6 +34,7 @@ function normalizeExperiment(body) {
     goal: body.goal.trim(),
     hypothesis: body.hypothesis || '',
     url: body.url || '',
+    segmentId: body.segmentId || null, // audience targeting: null = all visitors
     status: 'draft',
     variants: body.variants.map((v, i) => ({
       id: v.id || `v${i}`,

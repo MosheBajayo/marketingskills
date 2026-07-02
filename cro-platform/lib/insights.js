@@ -15,8 +15,12 @@ const BENCHMARKS = {
 const SEVERITY_RANK = { bad: 0, warn: 1, good: 2, info: 3 };
 
 // inputs: {channels (last-touch channelReport), funnel (funnelReport),
-//          campaigns, experiments, experimentResults: Map<id, results>}
-function generateInsights({ channels, funnel, campaigns = [], experiments = [], experimentResults = new Map() }) {
+//          campaigns, experiments, experimentResults: Map<id, results>,
+//          personalizations, personalizationResults: Map<id, results>}
+function generateInsights({
+  channels, funnel, campaigns = [], experiments = [], experimentResults = new Map(),
+  personalizations = [], personalizationResults = new Map(),
+}) {
   const insights = [];
   const add = (severity, title, detail, skill) => insights.push({ severity, title, detail, skill: skill || null });
 
@@ -108,6 +112,22 @@ function generateInsights({ channels, funnel, campaigns = [], experiments = [], 
         'ab-test-setup');
     }
   }
+  // ---- Personalizations ----
+  for (const px of personalizations) {
+    if (px.status !== 'running') continue;
+    const r = personalizationResults.get(px.id);
+    if (!r || !r.vsHoldback) continue;
+    if (r.vsHoldback.significant && r.vsHoldback.uplift > 0) {
+      add('good', `Personalization "${px.name}" is lifting conversions`,
+        `+${(r.vsHoldback.uplift * 100).toFixed(1)}% vs the ${px.holdback}% holdback control (p=${r.vsHoldback.pValue.toFixed(4)}). Consider rolling it out to 100% (holdback 0) or expanding the audience.`,
+        'page-cro');
+    } else if (r.vsHoldback.significant && r.vsHoldback.uplift < 0) {
+      add('bad', `Personalization "${px.name}" is hurting conversions`,
+        `${(r.vsHoldback.uplift * 100).toFixed(1)}% vs holdback (p=${r.vsHoldback.pValue.toFixed(4)}). Stop it — the targeted experience performs worse than the default.`,
+        'page-cro');
+    }
+  }
+
   const running = experiments.filter((e) => e.status === 'running').length;
   if (running === 0 && totals && totals.visitors > 500) {
     add('info', 'No experiments running',

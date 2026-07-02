@@ -13,8 +13,13 @@ const path = require('node:path');
 const { Store } = require('./lib/store');
 const { analyzeHtml, runAudit } = require('./lib/audit');
 const recommendations = require('./lib/recommendations');
-const { channelReport, funnelReport } = require('./lib/attribution');
+const {
+  channelReport, funnelReport, DEFAULT_FUNNEL,
+  validateFunnel, normalizeFunnel, filterEventsBySource,
+} = require('./lib/attribution');
 const { generateInsights } = require('./lib/insights');
+const segments = require('./lib/segments');
+const personalization = require('./lib/personalization');
 const {
   validateExperiment,
   normalizeExperiment,
@@ -156,11 +161,14 @@ route('POST', '/api/experiments/:id/status', async (req, res, params) => {
   json(res, 200, exp);
 });
 
-route('GET', '/api/experiments/:id/results', (req, res, params) => {
+// Results. ?segment=SEGMENT_ID computes a per-segment breakdown.
+route('GET', '/api/experiments/:id/results', (req, res, params, query) => {
   const exp = store.get('experiments', params.id);
   if (!exp) return json(res, 404, { error: 'experiment not found' });
-  const events = store.find('events', (e) => e.experimentId === exp.id);
-  json(res, 200, computeResults(exp, events));
+  let events = store.find('events', (e) => e.experimentId === exp.id);
+  const segmentId = query.get('segment');
+  if (segmentId) events = segments.filterEventsBySegment(events, segmentId);
+  json(res, 200, { ...computeResults(exp, events), segment: segmentId || null });
 });
 
 route('DELETE', '/api/experiments/:id', (req, res, params) => {
@@ -207,6 +215,94 @@ route('GET', '/api/audits/:id', (req, res, params) => {
   const audit = store.get('audits', params.id);
   if (!audit) return json(res, 404, { error: 'audit not found' });
   json(res, 200, audit);
+});
+
+// ---------------------------------------------------------------- API: segments (audiences)
+
+route('GET', '/api/segments', (req, res, params, query) => {
+  const events = store.all('events');
+  let list = store.all('segments');
+  if (query.get('siteId')) list = list.filter((s) => !s.siteId || s.siteId === query.get('siteId'));
+  json(res, 200, list.map((s) => ({ ...s, stats: segments.segmentStats(s, events) })));
+});
+
+route('POST', '/api/segments', async (req, res) => {
+  const body = await readBody(req);
+  const errors = segments.validateSegment(body);
+  if (errors.length) return json(res, 400, { errors });
+  json(res, 201, store.insert('segments', segments.normalizeSegment(body)));
+});
+
+route('DELETE', '/api/segments/:id', (req, res, params) => {
+  const inUse = store.find('experiments', (e) => e.segmentId === params.id).length +
+    store.find('personalizations', (p) => p.segmentId === params.id).length;
+  if (inUse) return json(res, 409, { error: `segment is used by ${inUse} experiment(s)/personalization(s)` });
+  if (!store.remove('segments', params.id)) return json(res, 404, { error: 'segment not found' });
+  json(res, 200, { ok: true });
+});
+
+// ---------------------------------------------------------------- API: personalizations (experiences)
+
+route('GET', '/api/personalizations', (req, res, params, query) => {
+  let list = store.all('personalizations');
+  if (query.get('siteId')) list = list.filter((p) => p.siteId === query.get('siteId'));
+  json(res, 200, list);
+});
+
+route('POST', '/api/personalizations', async (req, res) => {
+  const body = await readBody(req);
+  const errors = personalization.validatePersonalization(body);
+  if (errors.length) return json(res, 400, { errors });
+  if (!store.get('sites', body.siteId)) return json(res, 400, { errors: ['unknown siteId'] });
+  if (body.segmentId && !store.get('segments', body.segmentId)) {
+    return json(res, 400, { errors: ['unknown segmentId'] });
+  }
+  json(res, 201, store.insert('personalizations', personalization.normalizePersonalization(body)));
+});
+
+route('POST', '/api/personalizations/:id/status', async (req, res, params) => {
+  const body = await readBody(req);
+  if (!personalization.VALID_STATUSES.includes(body.status)) {
+    return json(res, 400, { error: `status must be one of ${personalization.VALID_STATUSES.join(', ')}` });
+  }
+  const patch = { status: body.status };
+  if (body.status === 'running') patch.startedAt = new Date().toISOString();
+  if (body.status === 'stopped') patch.stoppedAt = new Date().toISOString();
+  const px = store.update('personalizations', params.id, patch);
+  if (!px) return json(res, 404, { error: 'personalization not found' });
+  json(res, 200, px);
+});
+
+route('GET', '/api/personalizations/:id/results', (req, res, params) => {
+  const px = store.get('personalizations', params.id);
+  if (!px) return json(res, 404, { error: 'personalization not found' });
+  const events = store.find('events', (e) => e.siteId === px.siteId);
+  json(res, 200, personalization.computePersonalizationResults(px, events));
+});
+
+route('DELETE', '/api/personalizations/:id', (req, res, params) => {
+  if (!store.remove('personalizations', params.id)) return json(res, 404, { error: 'personalization not found' });
+  json(res, 200, { ok: true });
+});
+
+// ---------------------------------------------------------------- API: custom funnels
+
+route('GET', '/api/funnels', (req, res, params, query) => {
+  let list = store.all('funnels');
+  if (query.get('siteId')) list = list.filter((f) => !f.siteId || f.siteId === query.get('siteId'));
+  json(res, 200, list);
+});
+
+route('POST', '/api/funnels', async (req, res) => {
+  const body = await readBody(req);
+  const errors = validateFunnel(body);
+  if (errors.length) return json(res, 400, { errors });
+  json(res, 201, store.insert('funnels', normalizeFunnel(body)));
+});
+
+route('DELETE', '/api/funnels/:id', (req, res, params) => {
+  if (!store.remove('funnels', params.id)) return json(res, 404, { error: 'funnel not found' });
+  json(res, 200, { ok: true });
 });
 
 // ---------------------------------------------------------------- API: campaigns (ad spend)
@@ -260,8 +356,24 @@ route('GET', '/api/channels', (req, res, params, query) => {
   json(res, 200, channelReport(siteEvents(query), siteCampaigns(query), model));
 });
 
+// Funnel report. Filters: ?funnelId= (custom funnel), ?segment=, ?source=.
 route('GET', '/api/funnel', (req, res, params, query) => {
-  json(res, 200, funnelReport(siteEvents(query)));
+  let events = siteEvents(query);
+  if (query.get('segment')) events = segments.filterEventsBySegment(events, query.get('segment'));
+  if (query.get('source')) events = filterEventsBySource(events, query.get('source'));
+  let stages = DEFAULT_FUNNEL;
+  let funnel = null;
+  if (query.get('funnelId')) {
+    funnel = store.get('funnels', query.get('funnelId'));
+    if (!funnel) return json(res, 404, { error: 'funnel not found' });
+    stages = funnel.steps;
+  }
+  json(res, 200, {
+    funnelId: funnel ? funnel.id : null,
+    name: funnel ? funnel.name : 'Default DTC funnel',
+    filters: { segment: query.get('segment') || null, source: query.get('source') || null },
+    ...funnelReport(events, stages),
+  });
 });
 
 route('GET', '/api/insights', (req, res, params, query) => {
@@ -274,11 +386,19 @@ route('GET', '/api/insights', (req, res, params, query) => {
       computeResults(exp, store.find('events', (e) => e.experimentId === exp.id)),
     ])
   );
+  const personalizations = store.all('personalizations');
+  const personalizationResults = new Map(
+    personalizations.map((px) => [
+      px.id,
+      personalization.computePersonalizationResults(px, store.find('events', (e) => e.siteId === px.siteId)),
+    ])
+  );
   json(res, 200, {
     insights: generateInsights({
       channels: channelReport(events, campaigns, 'last'),
       funnel: funnelReport(events),
       campaigns, experiments, experimentResults,
+      personalizations, personalizationResults,
     }),
   });
 });
@@ -322,16 +442,23 @@ route('GET', '/api/overview', (req, res) => {
 
 // ---------------------------------------------------------------- Tracking endpoints (public, CORS-open)
 
-// Active experiment config consumed by the snippet.
+// Active config consumed by the snippet: running experiments and
+// personalizations, plus segment rules for client-side audience matching.
 route('GET', '/t/config', (req, res, params, query) => {
   const siteId = query.get('site');
   const experiments = store
     .find('experiments', (e) => e.siteId === siteId && e.status === 'running')
-    .map((e) => ({ id: e.id, name: e.name, goal: e.goal, url: e.url, variants: e.variants }));
-  json(res, 200, { experiments });
+    .map((e) => ({ id: e.id, name: e.name, goal: e.goal, url: e.url, segmentId: e.segmentId || null, variants: e.variants }));
+  const personalizations = store
+    .find('personalizations', (p) => p.siteId === siteId && p.status === 'running')
+    .map((p) => ({ id: p.id, name: p.name, segmentId: p.segmentId, goal: p.goal, url: p.url, holdback: p.holdback, changes: p.changes }));
+  const segs = store
+    .find('segments', (s) => !s.siteId || s.siteId === siteId)
+    .map((s) => ({ id: s.id, rules: s.rules }));
+  json(res, 200, { experiments, personalizations, segments: segs });
 });
 
-const VALID_EVENT_TYPES = ['pageview', 'assignment', 'conversion', 'track'];
+const VALID_EVENT_TYPES = ['pageview', 'assignment', 'conversion', 'track', 'personalization'];
 const TOUCH_KEYS = ['source', 'medium', 'campaign', 'content', 'term', 'referrer', 'landing'];
 
 function sanitizeTouch(t) {
@@ -359,6 +486,7 @@ route('POST', '/t/collect', async (req, res) => {
   for (const e of events.slice(0, 50)) {
     if (!e || !VALID_EVENT_TYPES.includes(e.type) || !e.siteId || !e.visitorId) continue;
     if (e.type === 'track' && !e.name) continue;
+    if (e.type === 'personalization' && (!e.personalizationId || !['experience', 'holdback'].includes(e.group))) continue;
     accepted.push(
       store.insert('events', {
         type: e.type,
@@ -366,9 +494,14 @@ route('POST', '/t/collect', async (req, res) => {
         visitorId: String(e.visitorId),
         experimentId: e.experimentId ? String(e.experimentId) : null,
         variantId: e.variantId ? String(e.variantId) : null,
+        personalizationId: e.personalizationId ? String(e.personalizationId) : null,
+        group: e.group ? String(e.group) : null,
         goal: e.goal ? String(e.goal) : null,
         name: e.name ? String(e.name).slice(0, 100) : null,
         value: typeof e.value === 'number' && isFinite(e.value) ? e.value : null,
+        segments: Array.isArray(e.segments)
+          ? e.segments.slice(0, 20).map((s) => String(s).slice(0, 64))
+          : [],
         ft: sanitizeTouch(e.ft),
         lt: sanitizeTouch(e.lt),
         url: e.url ? String(e.url).slice(0, 500) : null,

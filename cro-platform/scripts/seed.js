@@ -12,6 +12,8 @@ const { Store } = require('../lib/store');
 const { analyzeHtml } = require('../lib/audit');
 const recommendations = require('../lib/recommendations');
 const { assignVariant } = require('../lib/experiments');
+const { matchedSegmentIds } = require('../lib/segments');
+const { assignGroup } = require('../lib/personalization');
 
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'db.json');
 const store = new Store(DATA_FILE);
@@ -68,6 +70,58 @@ store.data.experiments.push({
     { id: 'v0', name: 'Control', weight: 1, changes: [] },
     { id: 'v1', name: 'Shipping banner', weight: 1, changes: [{ selector: 'header', type: 'style', value: 'border-bottom: 3px solid #d99a2b' }] },
   ],
+});
+
+// --- Segments (audiences) ---
+const SEGMENTS = [
+  {
+    id: 'seg_mobile', name: 'Mobile visitors', siteId: 'site_demo',
+    description: 'Visitors on mobile devices',
+    rules: [{ attr: 'device', op: 'is', value: 'mobile' }],
+    createdAt: iso(10 * 86400e3),
+  },
+  {
+    id: 'seg_meta_paid', name: 'Meta paid traffic', siteId: 'site_demo',
+    description: 'Visitors arriving from Meta ads',
+    rules: [{ attr: 'source', op: 'is', value: 'meta' }, { attr: 'medium', op: 'is', value: 'cpc' }],
+    createdAt: iso(10 * 86400e3),
+  },
+  {
+    id: 'seg_returning', name: 'Returning visitors', siteId: 'site_demo',
+    description: 'Visitors with more than one session',
+    rules: [{ attr: 'returning', op: 'is', value: 'true' }],
+    createdAt: iso(10 * 86400e3),
+  },
+];
+store.data.segments.push(...SEGMENTS);
+
+// --- Personalization: shipping reassurance for Meta paid traffic, 20% holdback ---
+const pxShipping = {
+  id: 'px_demo_shipping',
+  name: 'Shipping reassurance bar for Meta traffic',
+  siteId: 'site_demo',
+  segmentId: 'seg_meta_paid',
+  goal: 'purchase',
+  url: '',
+  holdback: 20,
+  status: 'running',
+  startedAt: iso(9 * 86400e3),
+  createdAt: iso(10 * 86400e3),
+  changes: [{ selector: '.shipping', type: 'style', value: 'font-weight:700; color:#8a5a00; font-size:15px' }],
+};
+store.data.personalizations.push(pxShipping);
+
+// --- Custom funnel (Superfunnel-style) ---
+store.data.funnels.push({
+  id: 'fn_demo_cart',
+  name: 'Cart-to-purchase funnel',
+  siteId: 'site_demo',
+  steps: [
+    { id: 's0', label: 'Added to cart', type: 'track', name: 'add_to_cart' },
+    { id: 's1', label: 'Began checkout', type: 'track', name: 'begin_checkout' },
+    { id: 's2', label: 'Purchased', type: 'conversion', goal: 'purchase' },
+  ],
+  createdAt: iso(8 * 86400e3),
 });
 
 // --- Ad campaigns (spend entries, matching the UTMs on seeded traffic) ---
@@ -138,12 +192,37 @@ for (let i = 0; i < VISITORS; i++) {
   const ft = channel.touch;
   const lt = channel.touch;
   const msAgo = Math.floor(pseudoRandom(i + 9000) * 13 * 86400e3); // spread over 13 days
-  const base = { siteId: 'site_demo', visitorId, experimentId: null, variantId: null, goal: null, url: '/demo.html', ft, lt };
+
+  // Visitor attributes → matched segments (same rules the snippet evaluates).
+  const attrs = {
+    device: pseudoRandom(i + 4000) < 0.58 ? 'mobile' : 'desktop',
+    returning: pseudoRandom(i + 6000) < 0.28,
+    visits: pseudoRandom(i + 6000) < 0.28 ? 2 : 1,
+    source: (lt && lt.source) || '',
+    medium: (lt && lt.medium) || '',
+    campaign: (lt && lt.campaign) || '',
+    referrer: (lt && lt.referrer) || '',
+    path: '/demo.html',
+  };
+  const segs = matchedSegmentIds(SEGMENTS, attrs);
+  const base = {
+    siteId: 'site_demo', visitorId, experimentId: null, variantId: null,
+    goal: null, url: '/demo.html', ft, lt, segments: segs,
+  };
 
   pushEvent({ ...base, type: 'pageview' }, msAgo);
   pushEvent({ ...base, type: 'assignment', experimentId: expHero.id, variantId: variant.id }, msAgo);
 
-  const buys = pseudoRandom(i) < RATES[variant.id] * channel.mult;
+  // Personalization impression for its audience; the experience arm
+  // converts a bit better than the holdback control.
+  let pxMult = 1;
+  if (segs.includes('seg_meta_paid')) {
+    const group = assignGroup(pxShipping, visitorId);
+    pxMult = group === 'experience' ? 1.35 : 1;
+    pushEvent({ ...base, type: 'personalization', personalizationId: pxShipping.id, group }, msAgo);
+  }
+
+  const buys = pseudoRandom(i) < RATES[variant.id] * channel.mult * pxMult;
   const addsToCart = buys || pseudoRandom(i + 1000) < 0.22;
   const checksOut = buys || (addsToCart && pseudoRandom(i + 2000) < 0.30);
 
@@ -181,6 +260,7 @@ const revenue = conversions.reduce((s, e) => s + (e.value || 0), 0);
 const spend = store.data.campaigns.reduce((s, c) => s + c.spend, 0);
 console.log('Seeded demo data:');
 console.log(`  1 site (site_demo), 2 experiments, ${store.data.events.length} events`);
+console.log(`  ${store.data.segments.length} segments, 1 personalization (20% holdback), 1 custom funnel`);
 console.log(`  ${assignments.length} assignments, ${conversions.length} conversions, $${revenue} revenue`);
 console.log(`  ${store.data.campaigns.length} ad campaigns, $${spend} spend (blended ROAS ${(revenue / spend).toFixed(2)}x)`);
 console.log(`  1 audit of the demo store (score ${report.score}/100, grade ${report.grade})`);
