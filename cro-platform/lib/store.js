@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const COLLECTIONS = ['sites', 'experiments', 'events', 'audits', 'campaigns', 'segments', 'personalizations', 'funnels'];
+const COLLECTIONS = ['sites', 'experiments', 'events', 'audits', 'campaigns', 'segments', 'personalizations', 'funnels', 'users', 'reports'];
 
 class Store {
   constructor(filePath) {

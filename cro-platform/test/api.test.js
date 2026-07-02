@@ -13,6 +13,7 @@ process.env.DATA_FILE = tmpData;
 const { server } = require('../server');
 
 let base;
+let cookie = '';
 
 test.before(async () => {
   await new Promise((resolve) => server.listen(0, resolve));
@@ -27,9 +28,11 @@ test.after(async () => {
 async function call(method, urlPath, body) {
   const res = await fetch(base + urlPath, {
     method,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  const setCookie = res.headers.get('set-cookie');
+  if (setCookie) cookie = setCookie.split(';')[0];
   return { status: res.status, body: await res.json() };
 }
 
@@ -40,6 +43,38 @@ test('full product flow', async (t) => {
     const r = await call('GET', '/api/health');
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.body.ok, true);
+  });
+
+  await t.test('API requires auth; signup issues a session', async () => {
+    const denied = await call('GET', '/api/sites');
+    assert.strictEqual(denied.status, 401);
+
+    const badPw = await call('POST', '/api/auth/signup', { email: 'a@b.com', password: 'short' });
+    assert.strictEqual(badPw.status, 400);
+
+    const r = await call('POST', '/api/auth/signup', { email: 'test@brand.com', password: 'hunter22!', name: 'Tester' });
+    assert.strictEqual(r.status, 201);
+    assert.strictEqual(r.body.user.email, 'test@brand.com');
+    assert.ok(cookie.includes('cro_session='));
+
+    const me = await call('GET', '/api/auth/me');
+    assert.strictEqual(me.body.user.email, 'test@brand.com');
+
+    const dup = await call('POST', '/api/auth/signup', { email: 'test@brand.com', password: 'hunter22!' });
+    assert.strictEqual(dup.status, 409);
+  });
+
+  await t.test('login validates credentials; logout clears session', async () => {
+    const saved = cookie;
+    cookie = '';
+    const bad = await call('POST', '/api/auth/login', { email: 'test@brand.com', password: 'wrong-password' });
+    assert.strictEqual(bad.status, 401);
+    const ok = await call('POST', '/api/auth/login', { email: 'test@brand.com', password: 'hunter22!' });
+    assert.strictEqual(ok.status, 200);
+    await call('POST', '/api/auth/logout');
+    const denied = await call('GET', '/api/auth/me');
+    assert.strictEqual(denied.status, 401);
+    cookie = saved; // continue the flow signed in
   });
 
   await t.test('create site', async () => {
@@ -309,6 +344,62 @@ test('full product flow', async (t) => {
     assert.ok(all.body.playbooks.length >= 10);
     const checkout = await call('GET', '/api/playbooks?category=checkout');
     assert.ok(checkout.body.playbooks.every((p) => p.category === 'checkout'));
+  });
+
+  await t.test('tracking endpoints stay public (no session)', async () => {
+    const saved = cookie;
+    cookie = '';
+    const collect = await call('POST', '/t/collect', {
+      events: [{ type: 'pageview', siteId, visitorId: 'anon1' }],
+    });
+    assert.strictEqual(collect.body.accepted, 1);
+    const cfg = await call('GET', `/t/config?site=${siteId}`);
+    assert.ok(Array.isArray(cfg.body.experiments));
+    cookie = saved;
+  });
+
+  await t.test('site setup status reflects received data', async () => {
+    const r = await call('GET', `/api/sites/${siteId}/status`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.installed, true);
+    assert.strictEqual(r.body.checklist.conversionTracked, true);
+    assert.strictEqual(r.body.checklist.revenueTracked, true);
+    assert.strictEqual(r.body.checklist.funnelStepTracked, true);
+    assert.strictEqual(r.body.checklist.ga4Connected, false);
+  });
+
+  await t.test('vitals are collected and reported at p75', async () => {
+    const events = [];
+    for (let i = 0; i < 8; i++) {
+      events.push({ type: 'vital', siteId, visitorId: `perf${i}`, name: 'LCP', value: 2000 + i * 100, url: 'https://x.com/home' });
+    }
+    events.push({ type: 'vital', siteId, visitorId: 'perfbad', name: 'BOGUS', value: 1 }); // rejected
+    events.push({ type: 'vital', siteId, visitorId: 'perfbad', name: 'LCP', value: 'nope' }); // rejected
+    const r = await call('POST', '/t/collect', { events });
+    assert.strictEqual(r.body.accepted, 8);
+    const report = await call('GET', `/api/performance?siteId=${siteId}`);
+    const home = report.body.pages.find((p) => p.page === '/home');
+    assert.ok(home);
+    assert.strictEqual(home.LCP.samples, 8);
+    assert.strictEqual(home.LCP.p75, 2500); // 6th of 8 sorted values
+    assert.strictEqual(home.LCP.rating, 'good');
+  });
+
+  await t.test('GA4 endpoints validate connection state and input', async () => {
+    const meta = await call('GET', '/api/ga4/meta');
+    assert.ok(meta.body.metrics.includes('purchaseRevenue'));
+    const notConnected = await call('GET', `/api/ga4/${siteId}/report?type=overview`);
+    assert.strictEqual(notConnected.status, 400);
+    const badConn = await call('POST', `/api/sites/${siteId}/ga4`, { propertyId: 'abc', serviceAccountJson: '{}' });
+    assert.strictEqual(badConn.status, 400);
+    const badReport = await call('POST', '/api/reports', { name: 'x', siteId, metrics: ['notAMetric'] });
+    assert.strictEqual(badReport.status, 400);
+    const savedReport = await call('POST', '/api/reports', {
+      name: 'Revenue by page', siteId, dimensions: ['pagePath'], metrics: ['purchaseRevenue', 'sessions'],
+    });
+    assert.strictEqual(savedReport.status, 201);
+    const run = await call('GET', `/api/reports/${savedReport.body.id}/run`);
+    assert.strictEqual(run.status, 400); // site has no GA4 connection
   });
 
   await t.test('dashboard is served', async () => {

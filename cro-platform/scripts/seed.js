@@ -14,6 +14,7 @@ const recommendations = require('../lib/recommendations');
 const { assignVariant } = require('../lib/experiments');
 const { matchedSegmentIds } = require('../lib/segments');
 const { assignGroup } = require('../lib/personalization');
+const { hashPassword } = require('../lib/auth');
 
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'db.json');
 const store = new Store(DATA_FILE);
@@ -26,12 +27,22 @@ if (store.get('sites', 'site_demo')) {
 const now = Date.now();
 const iso = (msAgo) => new Date(now - msAgo).toISOString();
 
+// --- Demo user (sign in with demo@example.com / demo1234) ---
+store.data.users.push({
+  id: 'usr_demo',
+  email: 'demo@example.com',
+  name: 'Demo User',
+  passwordHash: hashPassword('demo1234'),
+  createdAt: iso(21 * 86400e3),
+});
+
 // --- Site ---
 store.data.sites.push({
   id: 'site_demo',
   name: 'Glow Ritual (demo)',
   url: 'http://localhost:4600/demo.html',
   platform: 'shopify',
+  ownerId: 'usr_demo',
   createdAt: iso(21 * 86400e3),
 });
 
@@ -222,6 +233,15 @@ for (let i = 0; i < VISITORS; i++) {
     pushEvent({ ...base, type: 'personalization', personalizationId: pxShipping.id, group }, msAgo);
   }
 
+  // Real-user web vitals (~55% of visitors report them). LCP skews into
+  // "needs improvement" so the performance insight has something to say.
+  if (pseudoRandom(i + 7000) < 0.55) {
+    pushEvent({ ...base, type: 'vital', name: 'LCP', value: Math.round(1800 + pseudoRandom(i + 7100) * 2400) }, msAgo);
+    pushEvent({ ...base, type: 'vital', name: 'CLS', value: Math.round(pseudoRandom(i + 7200) * 180) / 1000 }, msAgo);
+    pushEvent({ ...base, type: 'vital', name: 'INP', value: Math.round(120 + pseudoRandom(i + 7300) * 260) }, msAgo);
+    pushEvent({ ...base, type: 'vital', name: 'TTFB', value: Math.round(250 + pseudoRandom(i + 7400) * 700) }, msAgo);
+  }
+
   const buys = pseudoRandom(i) < RATES[variant.id] * channel.mult * pxMult;
   const addsToCart = buys || pseudoRandom(i + 1000) < 0.22;
   const checksOut = buys || (addsToCart && pseudoRandom(i + 2000) < 0.30);
@@ -259,6 +279,7 @@ const conversions = store.data.events.filter((e) => e.type === 'conversion');
 const revenue = conversions.reduce((s, e) => s + (e.value || 0), 0);
 const spend = store.data.campaigns.reduce((s, c) => s + c.spend, 0);
 console.log('Seeded demo data:');
+console.log('  1 user — sign in with demo@example.com / demo1234');
 console.log(`  1 site (site_demo), 2 experiments, ${store.data.events.length} events`);
 console.log(`  ${store.data.segments.length} segments, 1 personalization (20% holdback), 1 custom funnel`);
 console.log(`  ${assignments.length} assignments, ${conversions.length} conversions, $${revenue} revenue`);

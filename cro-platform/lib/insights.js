@@ -19,7 +19,7 @@ const SEVERITY_RANK = { bad: 0, warn: 1, good: 2, info: 3 };
 //          personalizations, personalizationResults: Map<id, results>}
 function generateInsights({
   channels, funnel, campaigns = [], experiments = [], experimentResults = new Map(),
-  personalizations = [], personalizationResults = new Map(),
+  personalizations = [], personalizationResults = new Map(), performance = null,
 }) {
   const insights = [];
   const add = (severity, title, detail, skill) => insights.push({ severity, title, detail, skill: skill || null });
@@ -112,6 +112,17 @@ function generateInsights({
         'ab-test-setup');
     }
   }
+  // ---- Website performance ----
+  if (performance && performance.pages) {
+    for (const p of performance.pages) {
+      if (p.samples < 20 || !p.LCP || p.LCP.rating === 'good') continue;
+      add(p.LCP.rating === 'poor' ? 'bad' : 'warn',
+        `Slow page: ${p.page} (LCP p75 ${(p.LCP.p75 / 1000).toFixed(1)}s)`,
+        `75% of real visitors wait ${(p.LCP.p75 / 1000).toFixed(1)}s+ for the main content (target: under 2.5s). Every extra second of load time costs conversions — compress images, cut scripts, and lazy-load below-the-fold content on this page.`,
+        'page-cro');
+    }
+  }
+
   // ---- Personalizations ----
   for (const px of personalizations) {
     if (px.status !== 'running') continue;

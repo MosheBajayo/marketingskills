@@ -51,6 +51,81 @@ function fmtDate(iso) {
   return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 }
 
+// ------------------------------------------------------------------ auth
+
+let currentUser = null;
+
+async function ensureAuth() {
+  if (currentUser) return true;
+  try {
+    currentUser = (await api('/api/auth/me')).user;
+    updateSidebarUser();
+    return true;
+  } catch {
+    renderAuthScreen();
+    return false;
+  }
+}
+
+function updateSidebarUser() {
+  const foot = document.querySelector('.sidebar-foot');
+  if (!foot) return;
+  if (currentUser) {
+    foot.innerHTML = `<div style="margin-bottom:6px">${esc(currentUser.email)}</div>
+      <a href="#" id="logout-link" class="back-link">Sign out</a>`;
+    document.getElementById('logout-link').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await api('/api/auth/logout', { method: 'POST' });
+      currentUser = null;
+      renderAuthScreen();
+    });
+  } else {
+    foot.textContent = 'MVP · zero-dependency Node.js';
+  }
+}
+
+function renderAuthScreen(mode = 'login') {
+  updateSidebarUser();
+  const isLogin = mode === 'login';
+  main.innerHTML = `
+    <div style="max-width:420px;margin:8vh auto 0">
+      <h1 style="text-align:center">${isLogin ? 'Welcome back' : 'Create your account'}</h1>
+      <p class="page-sub" style="text-align:center">${isLogin ? 'Sign in to your CRO workspace.' : 'Set up your workspace and start optimizing.'}</p>
+      <div class="card">
+        <form id="auth-form" class="panel-form">
+          ${isLogin ? '' : '<div><label>Name</label><input name="name" placeholder="Jamie from Glow Ritual"></div>'}
+          <div><label>Email</label><input name="email" type="email" placeholder="you@brand.com" required></div>
+          <div><label>Password</label><input name="password" type="password" minlength="8" placeholder="${isLogin ? 'Your password' : 'At least 8 characters'}" required></div>
+          <button type="submit">${isLogin ? 'Sign in' : 'Create account'}</button>
+        </form>
+        <p class="muted mt" style="text-align:center">
+          ${isLogin ? 'No account yet? <a href="#" id="auth-toggle" class="back-link">Sign up</a>'
+    : 'Already registered? <a href="#" id="auth-toggle" class="back-link">Sign in</a>'}
+        </p>
+        <p class="muted" style="text-align:center;font-size:12px">Demo workspace: demo@example.com / demo1234 (after seeding)</p>
+      </div>
+    </div>
+  `;
+  document.getElementById('auth-toggle').addEventListener('click', (e) => {
+    e.preventDefault();
+    renderAuthScreen(isLogin ? 'signup' : 'login');
+  });
+  document.getElementById('auth-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const r = await api(`/api/auth/${isLogin ? 'login' : 'signup'}`, {
+        method: 'POST',
+        body: { email: fd.get('email'), password: fd.get('password'), name: fd.get('name') || undefined },
+      });
+      currentUser = r.user;
+      updateSidebarUser();
+      toast(isLogin ? 'Signed in' : 'Account created — welcome!');
+      render();
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
 // ------------------------------------------------------------------ pages
 
 const pages = {};
@@ -123,9 +198,13 @@ pages.sites = async () => {
         <td>${s.experimentCount}</td>
         <td>${s.auditCount}</td>
         <td><code class="muted">${esc(s.id)}</code></td>
-        <td><button class="danger small" data-del="${esc(s.id)}">Delete</button></td>
+        <td class="row-actions">
+          <button class="secondary small" data-status="${esc(s.id)}">Setup status</button>
+          <button class="danger small" data-del="${esc(s.id)}">Delete</button>
+        </td>
       </tr>`).join('')}
     </table></div>` : '<div class="empty">No sites yet — add your first brand above.</div>'}
+    <div id="site-status"></div>
   `;
   document.getElementById('site-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -142,6 +221,33 @@ pages.sites = async () => {
       await api(`/api/sites/${btn.dataset.del}`, { method: 'DELETE' });
       toast('Site deleted');
       render();
+    })
+  );
+  const CHECK_LABELS = {
+    snippetInstalled: 'Snippet installed (events received)',
+    receivingTraffic: 'Receiving traffic in the last 24h',
+    attributionSeen: 'Attribution captured (UTM/referrer touches)',
+    funnelStepTracked: 'Funnel steps tracked (add_to_cart…)',
+    conversionTracked: 'Conversions tracked',
+    revenueTracked: 'Revenue values on conversions',
+    vitalsCollected: 'Web vitals collected',
+    campaignAdded: 'Ad campaign spend added',
+    experimentRunning: 'An experiment is running',
+    ga4Connected: 'GA4 connected',
+  };
+  main.querySelectorAll('[data-status]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const s = await api(`/api/sites/${btn.dataset.status}/status`);
+      document.getElementById('site-status').innerHTML = `<div class="card mt">
+        <h3>Setup status ${s.installed ? '<span class="badge green">live</span>' : '<span class="badge amber">waiting for first event</span>'}
+          <span class="muted" style="font-weight:400;font-size:13px;margin-left:8px">${s.completed}/${s.total} complete
+          ${s.lastEventAt ? ` · last event ${fmtDate(s.lastEventAt)}` : ''} · ${s.eventsLast24h.toLocaleString()} events in 24h</span></h3>
+        ${Object.entries(s.checklist).map(([k, ok]) => `<div class="check-row">
+          <div class="check-icon">${ok ? '✅' : '⬜'}</div>
+          <div>${esc(CHECK_LABELS[k] || k)}</div>
+        </div>`).join('')}
+        ${!s.installed ? '<p class="muted mt">Install the snippet (see <a class="back-link" href="#/install">Install snippet</a>), open your site, then check again.</p>' : ''}
+      </div>`;
     })
   );
 };
@@ -934,6 +1040,217 @@ function personalizationCard(p, r, segs) {
   </div>`;
 }
 
+// ---------- GA4 reports ----------
+
+pages.reports = async (state = {}) => {
+  const [sites, meta] = await Promise.all([api('/api/sites'), api('/api/ga4/meta')]);
+  const siteId = state.siteId || (sites[0] && sites[0].id);
+  const site = sites.find((s) => s.id === siteId);
+  const connected = site && site.ga4 && site.ga4.connected;
+  const saved = siteId ? await api(`/api/reports?siteId=${siteId}`) : [];
+
+  main.innerHTML = `
+    <h1>GA4 Reports</h1>
+    <p class="page-sub">Connect Google Analytics 4 to blend its data with what the snippet tracks — and build reports without leaving the platform.</p>
+    ${sites.length > 1 ? `<div class="pill-row">${sites.map((s) =>
+      `<span class="pill ${s.id === siteId ? 'active' : ''}" data-site="${esc(s.id)}">${esc(s.name)}</span>`).join('')}</div>` : ''}
+    ${!site ? '<div class="empty">Add a site first on the <a class="back-link" href="#/sites">Sites page</a>.</div>' : connected ? `
+      <div class="card">
+        <h3>Connected ✓</h3>
+        <p class="muted">Property <code>${esc(site.ga4.propertyId)}</code> via <code>${esc(site.ga4.clientEmail)}</code>
+          <button class="danger small" id="ga4-disconnect" style="margin-left:10px">Disconnect</button></p>
+      </div>
+      <div class="pill-row mt">
+        ${['overview', 'channels', 'pages', 'trend'].map((t) =>
+          `<span class="pill ${state.type === t || (!state.type && t === 'overview') ? 'active' : ''}" data-report-type="${t}">${t}</span>`).join('')}
+        <span class="pill" data-report-type="compare">platform vs GA4</span>
+      </div>
+      <div id="report-output"><div class="loading">Loading report…</div></div>
+      <h2>Custom report builder</h2>
+      <div class="card">
+        <form id="report-builder" class="panel-form">
+          <div class="form-row">
+            <div><label>Report name</label><input name="name" placeholder="Revenue by landing page" required></div>
+            <div><label>Days</label><input name="days" type="number" min="1" max="365" value="28"></div>
+          </div>
+          <div class="form-row">
+            <div><label>Dimensions (up to 2)</label><select name="dim1"><option value="">—</option>
+              ${meta.dimensions.map((d) => `<option>${d}</option>`).join('')}</select></div>
+            <div><label>&nbsp;</label><select name="dim2"><option value="">—</option>
+              ${meta.dimensions.map((d) => `<option>${d}</option>`).join('')}</select></div>
+          </div>
+          <div><label>Metrics</label>
+            <div class="pill-row">${meta.metrics.map((m) =>
+              `<label class="pill" style="cursor:pointer"><input type="checkbox" name="metric" value="${m}" style="width:auto;margin-right:5px">${m}</label>`).join('')}</div>
+          </div>
+          <div class="row-actions"><button type="submit">Save &amp; run</button></div>
+        </form>
+      </div>
+      ${saved.length ? `<h2>Saved reports</h2><div class="card" style="padding:0"><table>
+        <tr><th>Name</th><th>Dimensions</th><th>Metrics</th><th>Days</th><th></th></tr>
+        ${saved.map((r) => `<tr>
+          <td><strong>${esc(r.name)}</strong></td>
+          <td class="muted">${esc(r.dimensions.join(', ') || '—')}</td>
+          <td class="muted">${esc(r.metrics.join(', '))}</td>
+          <td>${r.days}</td>
+          <td class="row-actions">
+            <button class="small" data-run-report="${esc(r.id)}">Run</button>
+            <button class="danger small" data-del-report="${esc(r.id)}">Delete</button>
+          </td>
+        </tr>`).join('')}
+      </table></div><div id="saved-output"></div>` : ''}
+    ` : `
+      <div class="card">
+        <h3>Connect GA4 for ${esc(site.name)}</h3>
+        <ol class="muted" style="margin:10px 0 16px 18px;line-height:1.8">
+          <li>Google Cloud console → create a <strong>service account</strong> and download its JSON key.</li>
+          <li>Enable the <strong>Google Analytics Data API</strong> on that project.</li>
+          <li>GA4 Admin → Property access management → add the service account email as <strong>Viewer</strong>.</li>
+          <li>Paste the numeric property id and the JSON key below. Credentials are verified with a live test query.</li>
+        </ol>
+        <form id="ga4-form" class="panel-form">
+          <div><label>GA4 property id (numeric)</label><input name="propertyId" placeholder="123456789" required></div>
+          <div><label>Service account JSON key</label><textarea name="serviceAccountJson" rows="6" placeholder='{"type": "service_account", "client_email": "...", "private_key": "..."}' required></textarea></div>
+          <div class="row-actions"><button type="submit" id="ga4-connect-btn">Connect &amp; verify</button></div>
+        </form>
+      </div>`}
+  `;
+  main.querySelectorAll('[data-site]').forEach((pill) =>
+    pill.addEventListener('click', () => pages.reports({ siteId: pill.dataset.site })));
+
+  const ga4Form = document.getElementById('ga4-form');
+  if (ga4Form) ga4Form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('ga4-connect-btn');
+    btn.disabled = true; btn.textContent = 'Verifying…';
+    const fd = new FormData(ga4Form);
+    try {
+      await api(`/api/sites/${siteId}/ga4`, {
+        method: 'POST',
+        body: { propertyId: fd.get('propertyId'), serviceAccountJson: fd.get('serviceAccountJson') },
+      });
+      toast('GA4 connected');
+      pages.reports({ siteId });
+    } catch (err) {
+      toast(err.message, true);
+      btn.disabled = false; btn.textContent = 'Connect & verify';
+    }
+  });
+
+  if (!connected) return;
+
+  document.getElementById('ga4-disconnect').addEventListener('click', async () => {
+    if (!confirm('Disconnect GA4 for this site?')) return;
+    await api(`/api/sites/${siteId}/ga4`, { method: 'DELETE' });
+    pages.reports({ siteId });
+  });
+
+  async function loadReport(type) {
+    const out = document.getElementById('report-output');
+    out.innerHTML = '<div class="loading">Loading report…</div>';
+    try {
+      if (type === 'compare') {
+        const c = await api(`/api/ga4/${siteId}/compare`);
+        out.innerHTML = `<div class="grid cols-3">
+          ${metric('Platform visitors', c.platform.visitors.toLocaleString(), `GA4 users: ${c.ga4.users.toLocaleString()}`)}
+          ${metric('Platform conversions', c.platform.conversions.toLocaleString(), `GA4: ${c.ga4.conversions.toLocaleString()}`)}
+          ${metric('Platform revenue', money(c.platform.revenue), `GA4: ${money(c.ga4.revenue)}`)}
+        </div>
+        <div class="card mt">${c.visitorDiffPct == null ? '' : `<strong>Visitor gap: ${c.visitorDiffPct > 0 ? '+' : ''}${c.visitorDiffPct}%</strong> · `}<span class="muted">${esc(c.note)}</span></div>`;
+        return;
+      }
+      const r = await api(`/api/ga4/${siteId}/report?type=${type}`);
+      out.innerHTML = ga4Table(r);
+    } catch (err) {
+      out.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+    }
+  }
+  main.querySelectorAll('[data-report-type]').forEach((pill) =>
+    pill.addEventListener('click', () => {
+      main.querySelectorAll('[data-report-type]').forEach((p) => p.classList.toggle('active', p === pill));
+      loadReport(pill.dataset.reportType);
+    }));
+  loadReport(state.type || 'overview');
+
+  const builder = document.getElementById('report-builder');
+  if (builder) builder.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(builder);
+    const dimensions = [fd.get('dim1'), fd.get('dim2')].filter(Boolean);
+    const metrics = [...builder.querySelectorAll('input[name=metric]:checked')].map((c) => c.value);
+    try {
+      const saved2 = await api('/api/reports', {
+        method: 'POST',
+        body: { name: fd.get('name'), siteId, dimensions, metrics, days: Number(fd.get('days')) || 28 },
+      });
+      toast('Report saved');
+      const result = await api(`/api/reports/${saved2.id}/run`);
+      pages.reports({ siteId });
+      setTimeout(() => {
+        const out = document.getElementById('saved-output');
+        if (out) out.innerHTML = ga4Table(result);
+      }, 50);
+    } catch (err) { toast(err.message, true); }
+  });
+  main.querySelectorAll('[data-run-report]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const out = document.getElementById('saved-output');
+      out.innerHTML = '<div class="loading">Running…</div>';
+      try {
+        out.innerHTML = ga4Table(await api(`/api/reports/${btn.dataset.runReport}/run`));
+      } catch (err) { out.innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+    }));
+  main.querySelectorAll('[data-del-report]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      await api(`/api/reports/${btn.dataset.delReport}`, { method: 'DELETE' });
+      pages.reports({ siteId });
+    }));
+};
+
+function ga4Table(r) {
+  if (!r.rows.length) return '<div class="empty">GA4 returned no rows for this range.</div>';
+  const cols = [...r.dimensions, ...r.metrics];
+  return `<div class="card" style="padding:0;overflow-x:auto"><table>
+    <tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr>
+    ${r.rows.map((row) => `<tr>${cols.map((c) =>
+      `<td>${typeof row[c] === 'number' ? row[c].toLocaleString() : esc(row[c])}</td>`).join('')}</tr>`).join('')}
+  </table></div>
+  <p class="muted mt">Last ${r.days} days · ${r.rows.length} rows</p>`;
+}
+
+// ---------- website performance ----------
+
+pages.performance = async () => {
+  const report = await api('/api/performance');
+  const vitalCell = (v) => {
+    if (!v) return '—';
+    const cls = { good: 'green', 'needs-improvement': 'amber', poor: 'red' }[v.rating] || 'gray';
+    return `<span class="badge ${cls}">${v.p75.toLocaleString()}</span>`;
+  };
+  main.innerHTML = `
+    <h1>Website Performance</h1>
+    <p class="page-sub">Real-user Core Web Vitals collected by the snippet (p75). Slow pages cost conversions — targets: LCP &lt; 2500ms, CLS &lt; 0.1, INP &lt; 200ms, TTFB &lt; 800ms.</p>
+    ${report.site.samples ? `
+      <div class="grid cols-4">
+        ${report.metrics.map((m) => {
+          const v = report.site[m];
+          return `<div class="card"><div class="metric-label">${m} · p75</div>
+            <div class="metric-value">${v ? v.p75.toLocaleString() : '—'}${m === 'CLS' ? '' : '<small> ms</small>'}</div>
+            <div class="mt">${v ? `<span class="badge ${{ good: 'green', 'needs-improvement': 'amber', poor: 'red' }[v.rating]}">${v.rating}</span>` : ''}</div></div>`;
+        }).join('')}
+      </div>
+      <h2>By page</h2>
+      <div class="card" style="padding:0"><table>
+        <tr><th>Page</th><th>Samples</th><th>LCP (ms)</th><th>CLS</th><th>INP (ms)</th><th>TTFB (ms)</th></tr>
+        ${report.pages.map((p) => `<tr>
+          <td><strong>${esc(p.page)}</strong></td><td>${p.samples.toLocaleString()}</td>
+          <td>${vitalCell(p.LCP)}</td><td>${vitalCell(p.CLS)}</td><td>${vitalCell(p.INP)}</td><td>${vitalCell(p.TTFB)}</td>
+        </tr>`).join('')}
+      </table></div>`
+      : '<div class="empty">No vitals collected yet — they arrive automatically once the snippet is installed and visitors browse your site.</div>'}
+  `;
+};
+
 // ---------- install ----------
 
 pages.install = async () => {
@@ -987,6 +1304,7 @@ function bindRowLinks() {
 }
 
 async function render() {
+  if (!(await ensureAuth())) return;
   const hash = location.hash.replace(/^#\//, '') || 'dashboard';
   const [page, id] = hash.split('/');
   document.querySelectorAll('#nav a').forEach((a) =>

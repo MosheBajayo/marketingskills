@@ -20,6 +20,9 @@ const {
 const { generateInsights } = require('./lib/insights');
 const segments = require('./lib/segments');
 const personalization = require('./lib/personalization');
+const auth = require('./lib/auth');
+const ga4 = require('./lib/ga4');
+const perf = require('./lib/performance');
 const {
   validateExperiment,
   normalizeExperiment,
@@ -32,6 +35,9 @@ const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data', 'db.json
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const store = new Store(DATA_FILE);
+const SESSION_SECRET = auth.loadSecret(DATA_FILE);
+// Optional invite gate: set SIGNUP_CODE to require a code at signup.
+const SIGNUP_CODE = process.env.SIGNUP_CODE || null;
 
 // ---------------------------------------------------------------- helpers
 
@@ -90,13 +96,70 @@ function matchRoute(method, pathname) {
   return null;
 }
 
-// ---------------------------------------------------------------- API: sites
+// ---------------------------------------------------------------- API: auth
 
 route('GET', '/api/health', (req, res) => json(res, 200, { ok: true, now: new Date().toISOString() }));
 
+function publicUser(u) {
+  return { id: u.id, email: u.email, name: u.name, createdAt: u.createdAt };
+}
+
+route('POST', '/api/auth/signup', async (req, res) => {
+  const body = await readBody(req);
+  if (!auth.validEmail(body.email)) return json(res, 400, { error: 'valid email is required' });
+  if (!body.password || String(body.password).length < 8) {
+    return json(res, 400, { error: 'password must be at least 8 characters' });
+  }
+  if (SIGNUP_CODE && body.inviteCode !== SIGNUP_CODE) {
+    return json(res, 403, { error: 'invalid invite code' });
+  }
+  const email = String(body.email).toLowerCase().trim();
+  if (store.find('users', (u) => u.email === email).length) {
+    return json(res, 409, { error: 'an account with this email already exists' });
+  }
+  const user = store.insert('users', {
+    email,
+    name: body.name ? String(body.name).trim() : email.split('@')[0],
+    passwordHash: auth.hashPassword(body.password),
+  });
+  res.setHeader('set-cookie', auth.sessionCookie(auth.createSession(user.id, SESSION_SECRET)));
+  json(res, 201, { user: publicUser(user) });
+});
+
+route('POST', '/api/auth/login', async (req, res) => {
+  const body = await readBody(req);
+  const email = String(body.email || '').toLowerCase().trim();
+  const user = store.find('users', (u) => u.email === email)[0];
+  if (!user || !auth.verifyPassword(body.password || '', user.passwordHash)) {
+    return json(res, 401, { error: 'invalid email or password' });
+  }
+  res.setHeader('set-cookie', auth.sessionCookie(auth.createSession(user.id, SESSION_SECRET)));
+  json(res, 200, { user: publicUser(user) });
+});
+
+route('POST', '/api/auth/logout', (req, res) => {
+  res.setHeader('set-cookie', auth.clearCookie());
+  json(res, 200, { ok: true });
+});
+
+route('GET', '/api/auth/me', (req, res) => {
+  json(res, 200, { user: publicUser(req.user) });
+});
+
+// ---------------------------------------------------------------- API: sites
+
+// Public view of a site: GA4 credentials are reduced to connection info.
+function siteView(s) {
+  const { ga4: conn, ...rest } = s;
+  return {
+    ...rest,
+    ga4: conn ? { connected: true, propertyId: conn.propertyId, clientEmail: conn.clientEmail } : { connected: false },
+  };
+}
+
 route('GET', '/api/sites', (req, res) => {
   const sites = store.all('sites').map((s) => ({
-    ...s,
+    ...siteView(s),
     experimentCount: store.find('experiments', (e) => e.siteId === s.id).length,
     auditCount: store.find('audits', (a) => a.siteId === s.id).length,
   }));
@@ -110,6 +173,7 @@ route('POST', '/api/sites', async (req, res) => {
     name: String(body.name).trim(),
     url: body.url ? String(body.url).trim() : '',
     platform: body.platform || 'custom', // shopify | woocommerce | custom …
+    ownerId: req.user ? req.user.id : null,
   });
   json(res, 201, site);
 });
@@ -117,12 +181,182 @@ route('POST', '/api/sites', async (req, res) => {
 route('GET', '/api/sites/:id', (req, res, params) => {
   const site = store.get('sites', params.id);
   if (!site) return json(res, 404, { error: 'site not found' });
-  json(res, 200, site);
+  json(res, 200, siteView(site));
 });
 
 route('DELETE', '/api/sites/:id', (req, res, params) => {
   if (!store.remove('sites', params.id)) return json(res, 404, { error: 'site not found' });
   json(res, 200, { ok: true });
+});
+
+// Activation status: is the snippet actually live on the user's website,
+// and which capabilities are receiving data? Powers the setup checklist.
+route('GET', '/api/sites/:id/status', (req, res, params) => {
+  const site = store.get('sites', params.id);
+  if (!site) return json(res, 404, { error: 'site not found' });
+  const events = store.find('events', (e) => e.siteId === site.id);
+  const now = Date.now();
+  const last24h = events.filter((e) => now - Date.parse(e.createdAt) < 86400e3);
+  const lastEvent = events[events.length - 1];
+  const has = (fn) => events.some(fn);
+  const checklist = {
+    snippetInstalled: events.length > 0,
+    receivingTraffic: last24h.length > 0,
+    attributionSeen: has((e) => (e.lt && e.lt.source) || (e.ft && e.ft.source)),
+    funnelStepTracked: has((e) => e.type === 'track'),
+    conversionTracked: has((e) => e.type === 'conversion'),
+    revenueTracked: has((e) => e.type === 'conversion' && typeof e.value === 'number'),
+    vitalsCollected: has((e) => e.type === 'vital'),
+    campaignAdded: store.find('campaigns', (c) => !c.siteId || c.siteId === site.id).length > 0,
+    experimentRunning: store.find('experiments', (e) => e.siteId === site.id && e.status === 'running').length > 0,
+    ga4Connected: !!site.ga4,
+  };
+  json(res, 200, {
+    siteId: site.id,
+    installed: checklist.snippetInstalled,
+    lastEventAt: lastEvent ? lastEvent.createdAt : null,
+    eventsLast24h: last24h.length,
+    totalEvents: events.length,
+    checklist,
+    completed: Object.values(checklist).filter(Boolean).length,
+    total: Object.keys(checklist).length,
+  });
+});
+
+// ---------------------------------------------------------------- API: GA4 connection & reports
+
+route('POST', '/api/sites/:id/ga4', async (req, res, params) => {
+  const site = store.get('sites', params.id);
+  if (!site) return json(res, 404, { error: 'site not found' });
+  const body = await readBody(req, 1024 * 64);
+  let conn;
+  try {
+    conn = ga4.parseConnection(body);
+  } catch (err) {
+    return json(res, 400, { error: err.message });
+  }
+  // Verify credentials + property access with a minimal live query.
+  try {
+    await ga4.report(conn, { type: 'overview', days: 7 });
+  } catch (err) {
+    return json(res, 502, { error: `connection test failed: ${err.message}` });
+  }
+  store.update('sites', site.id, { ga4: conn });
+  json(res, 200, { ok: true, propertyId: conn.propertyId, clientEmail: conn.clientEmail });
+});
+
+route('DELETE', '/api/sites/:id/ga4', (req, res, params) => {
+  const site = store.get('sites', params.id);
+  if (!site) return json(res, 404, { error: 'site not found' });
+  store.update('sites', site.id, { ga4: null });
+  json(res, 200, { ok: true });
+});
+
+function requireGa4(res, params) {
+  const site = store.get('sites', params.siteId);
+  if (!site) { json(res, 404, { error: 'site not found' }); return null; }
+  if (!site.ga4) { json(res, 400, { error: 'GA4 is not connected for this site — POST /api/sites/:id/ga4 first' }); return null; }
+  return site;
+}
+
+// Canned or custom GA4 report: ?type=overview|channels|pages|trend&days=28
+// or ?dimensions=a,b&metrics=x,y for the report builder.
+route('GET', '/api/ga4/:siteId/report', async (req, res, params, query) => {
+  const site = requireGa4(res, params);
+  if (!site) return;
+  try {
+    const result = await ga4.report(site.ga4, {
+      type: query.get('type') || undefined,
+      dimensions: query.get('dimensions') ? query.get('dimensions').split(',') : undefined,
+      metrics: query.get('metrics') ? query.get('metrics').split(',') : undefined,
+      days: Math.min(365, Number(query.get('days')) || 28),
+    });
+    json(res, 200, result);
+  } catch (err) {
+    json(res, 502, { error: err.message });
+  }
+});
+
+// Platform-tracked data vs GA4 over the same window — surfaces tracking
+// gaps (snippet missing on pages, consent blocking, UTM mismatches).
+route('GET', '/api/ga4/:siteId/compare', async (req, res, params, query) => {
+  const site = requireGa4(res, params);
+  if (!site) return;
+  const days = Math.min(365, Number(query.get('days')) || 28);
+  const cutoff = Date.now() - days * 86400e3;
+  const events = store.find('events', (e) => e.siteId === site.id && Date.parse(e.createdAt) >= cutoff);
+  const visitors = new Set(events.map((e) => e.visitorId)).size;
+  const conversions = new Set(events.filter((e) => e.type === 'conversion').map((e) => e.visitorId)).size;
+  const revenue = Math.round(events.reduce((s, e) => s + (e.type === 'conversion' && typeof e.value === 'number' ? e.value : 0), 0) * 100) / 100;
+  try {
+    const g = await ga4.report(site.ga4, { type: 'overview', days });
+    const row = g.rows[0] || {};
+    const gaUsers = row.totalUsers || 0;
+    const diff = gaUsers ? Math.round(((visitors - gaUsers) / gaUsers) * 1000) / 10 : null;
+    json(res, 200, {
+      days,
+      platform: { visitors, conversions, revenue },
+      ga4: {
+        sessions: row.sessions || 0, users: gaUsers,
+        conversions: row.conversions || 0, revenue: row.purchaseRevenue || 0,
+      },
+      visitorDiffPct: diff,
+      note: 'Differences of ±15% are normal (ad blockers, consent, bot filtering). Larger gaps usually mean the snippet or GA4 tag is missing on some pages.',
+    });
+  } catch (err) {
+    json(res, 502, { error: err.message });
+  }
+});
+
+route('GET', '/api/ga4/meta', (req, res) => {
+  json(res, 200, { dimensions: ga4.DIMENSIONS, metrics: ga4.METRICS, canned: Object.keys(ga4.CANNED) });
+});
+
+// Saved reports (report builder definitions).
+route('GET', '/api/reports', (req, res, params, query) => {
+  let list = store.all('reports');
+  if (query.get('siteId')) list = list.filter((r) => r.siteId === query.get('siteId'));
+  json(res, 200, list);
+});
+
+route('POST', '/api/reports', async (req, res) => {
+  const body = await readBody(req);
+  if (!body.name) return json(res, 400, { error: 'name is required' });
+  if (!body.siteId || !store.get('sites', body.siteId)) return json(res, 400, { error: 'valid siteId is required' });
+  const dims = (Array.isArray(body.dimensions) ? body.dimensions : []).filter((d) => ga4.DIMENSIONS.includes(d));
+  const mets = (Array.isArray(body.metrics) ? body.metrics : []).filter((m) => ga4.METRICS.includes(m));
+  if (!mets.length) return json(res, 400, { error: `at least one metric from: ${ga4.METRICS.join(', ')}` });
+  json(res, 201, store.insert('reports', {
+    name: String(body.name).trim(),
+    siteId: body.siteId,
+    dimensions: dims,
+    metrics: mets,
+    days: Math.min(365, Number(body.days) || 28),
+  }));
+});
+
+route('DELETE', '/api/reports/:id', (req, res, params) => {
+  if (!store.remove('reports', params.id)) return json(res, 404, { error: 'report not found' });
+  json(res, 200, { ok: true });
+});
+
+route('GET', '/api/reports/:id/run', async (req, res, params) => {
+  const saved = store.get('reports', params.id);
+  if (!saved) return json(res, 404, { error: 'report not found' });
+  const site = store.get('sites', saved.siteId);
+  if (!site || !site.ga4) return json(res, 400, { error: 'GA4 is not connected for this report\'s site' });
+  try {
+    const result = await ga4.report(site.ga4, saved);
+    json(res, 200, { report: saved, ...result });
+  } catch (err) {
+    json(res, 502, { error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------- API: website performance (web vitals)
+
+route('GET', '/api/performance', (req, res, params, query) => {
+  json(res, 200, perf.performanceReport(siteEvents(query)));
 });
 
 // ---------------------------------------------------------------- API: experiments
@@ -399,6 +633,7 @@ route('GET', '/api/insights', (req, res, params, query) => {
       funnel: funnelReport(events),
       campaigns, experiments, experimentResults,
       personalizations, personalizationResults,
+      performance: perf.performanceReport(events),
     }),
   });
 });
@@ -458,7 +693,8 @@ route('GET', '/t/config', (req, res, params, query) => {
   json(res, 200, { experiments, personalizations, segments: segs });
 });
 
-const VALID_EVENT_TYPES = ['pageview', 'assignment', 'conversion', 'track', 'personalization'];
+const VALID_EVENT_TYPES = ['pageview', 'assignment', 'conversion', 'track', 'personalization', 'vital'];
+const VALID_VITALS = ['LCP', 'CLS', 'INP', 'TTFB'];
 const TOUCH_KEYS = ['source', 'medium', 'campaign', 'content', 'term', 'referrer', 'landing'];
 
 function sanitizeTouch(t) {
@@ -487,6 +723,7 @@ route('POST', '/t/collect', async (req, res) => {
     if (!e || !VALID_EVENT_TYPES.includes(e.type) || !e.siteId || !e.visitorId) continue;
     if (e.type === 'track' && !e.name) continue;
     if (e.type === 'personalization' && (!e.personalizationId || !['experience', 'holdback'].includes(e.group))) continue;
+    if (e.type === 'vital' && (!VALID_VITALS.includes(e.name) || typeof e.value !== 'number' || !isFinite(e.value))) continue;
     accepted.push(
       store.insert('events', {
         type: e.type,
@@ -580,6 +817,17 @@ const server = http.createServer(async (req, res) => {
 
   const match = matchRoute(req.method, pathname);
   if (match) {
+    // Auth gate: /api/* requires a session, except health and the
+    // signup/login/logout endpoints. Tracking (/t/*) stays public.
+    const isApi = pathname.startsWith('/api/');
+    const isPublicApi = pathname === '/api/health' ||
+      (pathname.startsWith('/api/auth/') && pathname !== '/api/auth/me');
+    if (isApi && !isPublicApi) {
+      const userId = auth.verifySession(auth.tokenFromRequest(req), SESSION_SECRET);
+      const user = userId ? store.get('users', userId) : null;
+      if (!user) return json(res, 401, { error: 'authentication required' });
+      req.user = user;
+    }
     try {
       await match.handler(req, res, match.params, url.searchParams);
     } catch (err) {

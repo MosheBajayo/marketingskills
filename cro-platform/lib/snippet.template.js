@@ -262,6 +262,50 @@
       track({ type: 'pageview' });
     });
 
+  // ---- real-user web vitals (LCP, CLS, INP, TTFB) --------------------
+  (function collectVitals() {
+    var vitals = {};
+    try {
+      var nav = performance.getEntriesByType('navigation')[0];
+      if (nav && nav.responseStart > 0) vitals.TTFB = Math.round(nav.responseStart);
+    } catch (e) { /* no navigation timing */ }
+    if (typeof PerformanceObserver !== 'undefined') {
+      try {
+        new PerformanceObserver(function (list) {
+          var entries = list.getEntries();
+          if (entries.length) vitals.LCP = Math.round(entries[entries.length - 1].startTime);
+        }).observe({ type: 'largest-contentful-paint', buffered: true });
+      } catch (e) { /* unsupported */ }
+      try {
+        vitals.CLS = 0;
+        new PerformanceObserver(function (list) {
+          list.getEntries().forEach(function (entry) {
+            if (!entry.hadRecentInput) vitals.CLS = Math.round((vitals.CLS + entry.value) * 1000) / 1000;
+          });
+        }).observe({ type: 'layout-shift', buffered: true });
+      } catch (e) { /* unsupported */ }
+      try {
+        new PerformanceObserver(function (list) {
+          list.getEntries().forEach(function (entry) {
+            var dur = Math.round(entry.duration);
+            if (!vitals.INP || dur > vitals.INP) vitals.INP = dur;
+          });
+        }).observe({ type: 'event', buffered: true, durationThreshold: 40 });
+      } catch (e) { /* unsupported */ }
+    }
+    var sent = false;
+    function sendVitals() {
+      if (sent) return;
+      sent = true;
+      for (var name in vitals) track({ type: 'vital', name: name, value: vitals[name] });
+      flush();
+    }
+    window.addEventListener('pagehide', sendVitals);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') sendVitals();
+    });
+  })();
+
   document.addEventListener('click', function (e) {
     if (!e.target || !e.target.closest) return;
     var stepEl = e.target.closest('[data-cro-track]');
