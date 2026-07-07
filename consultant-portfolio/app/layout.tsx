@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -9,6 +9,13 @@ const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-inter",
+  display: "swap",
+});
+
+const grotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-grotesk",
   display: "swap",
 });
 
@@ -25,12 +32,13 @@ export const metadata: Metadata = {
     template: `%s | ${site.name}`,
   },
   description:
-    "Moshe Bajayo — Growth & CRO consultant with 7+ years scaling Tech/SaaS and D2C e-commerce for brands like PepsiCo, Fox Group, and Lumen. Turn expensive traffic into predictable revenue with rigorous experimentation.",
-  metadataBase: new URL("https://moshebajayo.com"),
+    "Bajayo Growth is a conversion & experimentation studio for Tech, DTC, and B2B2C brands — built on work for PepsiCo, SodaStream, Terminal X, Office Depot, Fox Group, and Lumen. Growth, engineered.",
+  metadataBase: new URL("https://bajayogrowth.com"),
   keywords: [
-    "CRO consultant",
+    "CRO agency",
     "conversion rate optimization",
-    "growth consultant",
+    "growth studio",
+    "experimentation program",
     "product-led growth",
     "e-commerce CRO",
     "SaaS growth",
@@ -39,7 +47,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: `${site.name} — ${site.role}`,
     description:
-      "Turn expensive traffic into predictable revenue. Growth & CRO for Tech and D2C.",
+      "A conversion & experimentation studio for Tech, DTC, and B2B2C brands. Growth, engineered.",
     type: "website",
     siteName: site.name,
   },
@@ -47,7 +55,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${site.name} — ${site.role}`,
     description:
-      "Turn expensive traffic into predictable revenue. Growth & CRO for Tech and D2C.",
+      "A conversion & experimentation studio for Tech, DTC, and B2B2C brands. Growth, engineered.",
   },
 };
 
@@ -57,8 +65,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${mono.variable}`}>
-      <body className="font-sans bg-ink-950 text-slate-100 antialiased">
+    <html
+      lang="en"
+      className={`${inter.variable} ${grotesk.variable} ${mono.variable}`}
+    >
+      <body className="font-sans bg-carbon-950 text-neutral-100 antialiased">
         <Navbar />
         <main className="min-h-screen pt-16 md:pt-20">{children}</main>
         <Footer />

@@ -37,7 +37,7 @@ export function Navbar() {
       className={cn(
         "fixed inset-x-0 top-0 z-50 transition-colors duration-300",
         scrolled
-          ? "border-b border-ink-700/70 bg-ink-950/80 backdrop-blur-xl"
+          ? "border-b border-white/10 bg-carbon-950/85 backdrop-blur-xl"
           : "border-b border-transparent",
       )}
     >
@@ -45,38 +45,31 @@ export function Navbar() {
         <nav className="flex h-16 items-center justify-between md:h-20">
           <Link
             href="/"
-            className="group flex items-center gap-2.5"
+            className="group flex items-baseline gap-1.5"
             aria-label={`${site.name} — home`}
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-signal-gradient font-mono text-sm font-bold text-ink-950 shadow-glow-sm">
-              {site.wordmark}
+            <span className="font-display text-lg font-bold uppercase tracking-tight text-white">
+              {site.shortName}
             </span>
-            <span className="flex flex-col leading-none">
-              <span className="text-sm font-semibold text-white">
-                {site.name}
-              </span>
-              <span className="mt-0.5 text-[11px] text-slate-500">
-                {site.role}
-              </span>
+            <span className="font-display text-lg font-bold uppercase tracking-tight text-volt-500">
+              Growth
             </span>
+            <span className="h-1.5 w-1.5 self-center bg-volt-500 transition-transform duration-300 group-hover:rotate-45" />
           </Link>
 
           {/* Desktop nav */}
-          <div className="hidden items-center gap-1 md:flex">
+          <div className="hidden items-center gap-8 md:flex">
             {nav.map((item) => {
-              const active =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
+              const active = pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "rounded-full px-4 py-2 text-sm transition-colors",
+                    "font-mono text-xs uppercase tracking-[0.2em] transition-colors",
                     active
-                      ? "text-white"
-                      : "text-slate-400 hover:text-white hover:bg-white/5",
+                      ? "text-volt-500"
+                      : "text-neutral-400 hover:text-white",
                   )}
                 >
                   {item.label}
@@ -87,8 +80,8 @@ export function Navbar() {
 
           <div className="hidden md:block">
             <Button href="/contact" size="sm">
-              Book a Strategy Audit
-              <ArrowUpRight className="h-4 w-4" />
+              Book an audit
+              <ArrowUpRight className="h-3.5 w-3.5" />
             </Button>
           </div>
 
@@ -96,7 +89,7 @@ export function Navbar() {
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 hover:bg-white/5 md:hidden"
+            className="flex h-10 w-10 items-center justify-center text-neutral-300 hover:text-white md:hidden"
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
           >
@@ -108,34 +101,29 @@ export function Navbar() {
       {/* Mobile menu */}
       <div
         className={cn(
-          "md:hidden overflow-hidden border-t border-ink-700/70 bg-ink-950/95 backdrop-blur-xl transition-[max-height,opacity] duration-300",
+          "md:hidden overflow-hidden border-t border-white/10 bg-carbon-950/95 backdrop-blur-xl transition-[max-height,opacity] duration-300",
           open ? "max-h-96 opacity-100" : "max-h-0 opacity-0",
         )}
       >
-        <Container className="py-4">
+        <Container className="py-5">
           <div className="flex flex-col gap-1">
             {nav.map((item) => {
-              const active =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
+              const active = pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "rounded-lg px-4 py-3 text-base transition-colors",
-                    active
-                      ? "bg-white/5 text-white"
-                      : "text-slate-300 hover:bg-white/5",
+                    "px-2 py-3 font-mono text-sm uppercase tracking-[0.2em] transition-colors",
+                    active ? "text-volt-500" : "text-neutral-300 hover:text-white",
                   )}
                 >
                   {item.label}
                 </Link>
               );
             })}
-            <Button href="/contact" className="mt-3 w-full">
-              Book a Strategy Audit
+            <Button href="/contact" className="mt-4 w-full">
+              Book an audit
               <ArrowUpRight className="h-4 w-4" />
             </Button>
           </div>

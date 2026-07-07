@@ -1,50 +1,48 @@
 import { Container } from "@/components/ui/Container";
-import { Reveal } from "@/components/ui/Reveal";
 import { brands } from "@/lib/content";
 
 /**
- * "As seen on" logo wall. Renders brand wordmarks in a uniform grayscale
- * grid that reveals color on hover. To use real logo artwork, drop SVGs
- * in /public/logos and swap the <span> wordmark for an <Image>.
+ * "As seen on" brand band. Oversized wordmark marquee — the boldest proof
+ * on the page. To use real logo artwork, drop SVGs in /public/logos and
+ * swap the <span> wordmarks for <Image> elements.
  */
 export function AsSeenOn() {
+  const row = [...brands, ...brands];
   return (
-    <section className="relative border-y border-ink-700/70 bg-ink-900/40 py-16">
-      <div className="pointer-events-none absolute inset-0 bg-dots opacity-30" />
-      <Container className="relative">
-        <Reveal>
-          <p className="text-center font-mono text-xs uppercase tracking-[0.3em] text-signal-400">
-            As seen on
-          </p>
-          <h2 className="mx-auto mt-3 max-w-xl text-balance text-center text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            Trusted by the brands behind the growth
-          </h2>
-        </Reveal>
+    <section className="border-y border-white/10 bg-carbon-900/60 py-12">
+      <Container>
+        <p className="flex items-center gap-3 font-mono text-xs uppercase tracking-[0.3em] text-neutral-500">
+          <span className="inline-block h-px w-8 bg-volt-500" aria-hidden />
+          As seen on — brands our work has shipped for
+        </p>
+      </Container>
 
-        <Reveal delay={0.1}>
-          <ul className="mx-auto mt-10 grid max-w-4xl grid-cols-2 gap-px overflow-hidden rounded-2xl border border-ink-700/70 bg-ink-700/40 sm:grid-cols-3">
-            {brands.map((brand) => (
-              <li
-                key={brand.name}
-                className="group flex flex-col items-center justify-center gap-1 bg-ink-950 px-6 py-8 transition-colors hover:bg-ink-900"
-              >
-                <span className="text-xl font-semibold tracking-tight text-slate-500 transition-colors group-hover:text-white sm:text-2xl">
-                  {brand.name}
-                </span>
-                <span className="font-mono text-[10px] uppercase tracking-widest text-slate-700 transition-colors group-hover:text-signal-400">
-                  {brand.note}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Reveal>
+      <div className="group relative mt-8 overflow-hidden">
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-24 bg-gradient-to-r from-carbon-950 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-24 bg-gradient-to-l from-carbon-950 to-transparent" />
+        <div className="flex w-max animate-marquee-slow items-center group-hover:[animation-play-state:paused]">
+          {row.map((brand, i) => (
+            <span
+              key={`${brand.name}-${i}`}
+              className="flex items-baseline gap-4 pr-16"
+            >
+              <span className="whitespace-nowrap font-display text-5xl font-bold uppercase tracking-tightest text-neutral-600 transition-colors duration-300 hover:text-white sm:text-6xl">
+                {brand.name}
+              </span>
+              <span className="hidden whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-700 sm:inline">
+                {brand.note}
+              </span>
+              <span className="h-2 w-2 bg-volt-500" aria-hidden />
+            </span>
+          ))}
+        </div>
+      </div>
 
-        <Reveal delay={0.15}>
-          <p className="mt-6 text-center text-xs text-slate-600">
-            Roles held across 7+ years in growth &amp; CRO. Logos represent
-            employers and brands worked with.
-          </p>
-        </Reveal>
+      <Container>
+        <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-600">
+          Roles held across 7+ years in growth &amp; CRO — employers and
+          brands worked with.
+        </p>
       </Container>
     </section>
   );

@@ -8,77 +8,49 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { audiences } from "@/lib/content";
 import { cn } from "@/lib/utils";
 
-// Static class maps so Tailwind can see every accent utility at build time.
-const accentStyles = {
-  tech: {
-    text: "text-tech-400",
-    ring: "ring-tech-500/40",
-    chipActive: "bg-tech-500/15 text-tech-300 border-tech-500/40",
-    metricBg: "bg-tech-500/10 border-tech-500/20",
-    metricText: "text-tech-300",
-    glow: "bg-tech-500/15",
-    icon: Cpu,
-  },
-  commerce: {
-    text: "text-commerce-400",
-    ring: "ring-commerce-500/40",
-    chipActive: "bg-commerce-500/15 text-commerce-300 border-commerce-500/40",
-    metricBg: "bg-commerce-500/10 border-commerce-500/20",
-    metricText: "text-commerce-300",
-    glow: "bg-commerce-500/15",
-    icon: ShoppingBag,
-  },
-} as const;
+const icons = { tech: Cpu, ecom: ShoppingBag } as const;
 
 export function AudienceSplit() {
   const [active, setActive] = useState<(typeof audiences)[number]["id"]>(
     audiences[0].id,
   );
   const current = audiences.find((a) => a.id === active) ?? audiences[0];
-  const styles = accentStyles[current.accent];
-  const ActiveIcon = styles.icon;
+  const ActiveIcon = icons[current.id];
 
   return (
-    <section id="split" className="relative py-24 sm:py-28">
+    <section id="split" className="relative py-24 sm:py-32">
       <Container>
-        <SectionHeading
-          align="center"
-          eyebrow="Two playbooks, one discipline"
-          title="Pick your growth challenge"
-          description="The methodology rhymes — research, prioritize, test — but the levers are different. Choose your world to see how I move the number that matters."
-        />
+        <div className="flex flex-col gap-10 lg:flex-row lg:items-end lg:justify-between">
+          <SectionHeading
+            eyebrow="01 — Who we help"
+            title="Two playbooks. One discipline."
+            description="The methodology rhymes — research, prioritize, test — but the levers differ. Pick your world."
+          />
 
-        {/* Segmented toggle */}
-        <div className="mx-auto mt-10 flex max-w-md items-center rounded-full border border-ink-700/70 bg-ink-900/60 p-1.5 backdrop-blur">
-          {audiences.map((a) => {
-            const s = accentStyles[a.accent];
-            const Icon = s.icon;
-            const isActive = a.id === active;
-            return (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => setActive(a.id)}
-                className={cn(
-                  "relative flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium transition-colors",
-                  isActive ? "text-white" : "text-slate-400 hover:text-white",
-                )}
-                aria-pressed={isActive}
-              >
-                {isActive && (
-                  <motion.span
-                    layoutId="audience-pill"
-                    className="absolute inset-0 rounded-full bg-ink-700/80 ring-1 ring-inset ring-white/10"
-                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                  />
-                )}
-                <span className="relative flex items-center gap-2">
-                  <Icon className={cn("h-4 w-4", isActive && s.text)} />
-                  {a.id === "tech" ? "Tech / SaaS" : "D2C / E-com"}
-                </span>
-              </button>
-            );
-          })}
+          {/* Segmented toggle */}
+          <div className="flex w-full max-w-md shrink-0 border border-white/15">
+            {audiences.map((a) => {
+              const Icon = icons[a.id];
+              const isActive = a.id === active;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setActive(a.id)}
+                  className={cn(
+                    "relative flex flex-1 items-center justify-center gap-2 px-4 py-3.5 font-mono text-xs uppercase tracking-[0.15em] transition-colors",
+                    isActive
+                      ? "bg-volt-500 text-carbon-950"
+                      : "text-neutral-400 hover:text-white",
+                  )}
+                  aria-pressed={isActive}
+                >
+                  <Icon className="h-4 w-4" />
+                  {a.id === "tech" ? "Tech / SaaS" : "DTC / E-com"}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Animated panel */}
@@ -90,55 +62,35 @@ export function AudienceSplit() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.35, ease: [0.21, 0.47, 0.32, 0.98] }}
-              className="grid gap-8 lg:grid-cols-2"
+              className="grid gap-px border border-white/10 bg-white/10 lg:grid-cols-[1.4fr_1fr]"
             >
               {/* Left: narrative */}
-              <div className="relative overflow-hidden rounded-3xl border border-ink-700/70 bg-ink-900/60 p-8 backdrop-blur sm:p-10">
-                <div
-                  className={cn(
-                    "pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full blur-3xl",
-                    styles.glow,
-                  )}
-                />
+              <div className="relative overflow-hidden bg-carbon-900 p-8 sm:p-12">
+                <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-volt-500/10 blur-3xl" />
                 <div className="relative">
                   <div className="flex items-center gap-3">
-                    <span
-                      className={cn(
-                        "flex h-11 w-11 items-center justify-center rounded-xl border border-ink-600 bg-ink-800",
-                        styles.text,
-                      )}
-                    >
+                    <span className="flex h-11 w-11 items-center justify-center border border-volt-500/40 text-volt-500">
                       <ActiveIcon className="h-5 w-5" />
                     </span>
-                    <p
-                      className={cn(
-                        "font-mono text-xs uppercase tracking-[0.2em]",
-                        styles.text,
-                      )}
-                    >
+                    <p className="font-mono text-xs uppercase tracking-[0.25em] text-volt-500">
                       {current.kicker}
                     </p>
                   </div>
 
-                  <h3 className="mt-6 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                  <h3 className="mt-7 font-display text-3xl font-bold uppercase leading-none tracking-tightest text-white sm:text-4xl">
                     {current.title}
                   </h3>
-                  <p className="mt-4 text-pretty leading-relaxed text-slate-400">
+                  <p className="mt-5 max-w-lg text-pretty leading-relaxed text-neutral-400">
                     {current.description}
                   </p>
 
-                  <ul className="mt-7 grid gap-3 sm:grid-cols-2">
+                  <ul className="mt-8 grid gap-3 sm:grid-cols-2">
                     {current.bullets.map((b) => (
                       <li
                         key={b}
-                        className="flex items-start gap-2.5 text-sm text-slate-300"
+                        className="flex items-start gap-2.5 text-sm text-neutral-300"
                       >
-                        <Check
-                          className={cn(
-                            "mt-0.5 h-4 w-4 shrink-0",
-                            styles.text,
-                          )}
-                        />
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-volt-500" />
                         {b}
                       </li>
                     ))}
@@ -146,10 +98,7 @@ export function AudienceSplit() {
 
                   <a
                     href="/contact"
-                    className={cn(
-                      "mt-8 inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80",
-                      styles.text,
-                    )}
+                    className="mt-9 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-volt-500 transition-opacity hover:opacity-80"
                   >
                     {current.cta}
                     <ArrowUpRight className="h-4 w-4" />
@@ -157,28 +106,20 @@ export function AudienceSplit() {
                 </div>
               </div>
 
-              {/* Right: metrics */}
-              <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+              {/* Right: metrics stack */}
+              <div className="grid grid-rows-3 gap-px bg-white/10">
                 {current.metrics.map((m, i) => (
                   <motion.div
                     key={m.label}
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 + i * 0.08, duration: 0.4 }}
-                    className={cn(
-                      "flex flex-col justify-center rounded-3xl border p-7 backdrop-blur",
-                      styles.metricBg,
-                    )}
+                    className="flex flex-col justify-center bg-carbon-900 px-8 py-6"
                   >
-                    <span
-                      className={cn(
-                        "text-4xl font-semibold tracking-tight sm:text-5xl",
-                        styles.metricText,
-                      )}
-                    >
+                    <span className="font-display text-5xl font-bold tracking-tightest text-volt-500 sm:text-6xl">
                       {m.value}
                     </span>
-                    <span className="mt-2 text-sm text-slate-400">
+                    <span className="mt-1.5 font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">
                       {m.label}
                     </span>
                   </motion.div>
@@ -187,6 +128,10 @@ export function AudienceSplit() {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.15em] text-neutral-600">
+          Representative outcomes from engagements of this type.
+        </p>
       </Container>
     </section>
   );

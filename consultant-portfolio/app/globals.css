@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: #060709;
-  --color-fg: #f4f6f8;
+  --color-bg: #050505;
+  --color-fg: #f5f5f5;
 }
 
 html {
@@ -19,38 +19,30 @@ body {
   font-feature-settings: "ss01", "cv01", "tnum";
 }
 
-/* Custom selection color */
+/* Volt selection */
 ::selection {
-  background: rgba(16, 185, 129, 0.28);
-  color: #fff;
+  background: #ccff00;
+  color: #050505;
 }
 
-/* Slim, dark scrollbar */
+/* Slim dark scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0c10;
+  background: #0a0a0a;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1b212d;
-  border-radius: 8px;
-  border: 2px solid #0a0c10;
+  background: #1f1f1f;
+  border-radius: 0;
+  border: 2px solid #0a0a0a;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a3242;
+  background: #2b2b2b;
 }
 
 @layer utilities {
-  .gradient-text {
-    background: linear-gradient(100deg, #6ee7b7 0%, #34d399 45%, #38bdf8 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
-  }
-
   .text-balance {
     text-wrap: balance;
   }
@@ -63,25 +55,29 @@ body {
     @apply px-5 sm:px-8 lg:px-12;
   }
 
-  /* Faint blueprint grid used behind hero / sections */
-  .bg-grid {
-    background-image:
-      linear-gradient(to right, rgba(148, 163, 184, 0.06) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
-    background-size: 56px 56px;
+  /* Outlined display text (used for oversized wordmarks) */
+  .text-outline {
+    -webkit-text-stroke: 1px rgba(255, 255, 255, 0.18);
+    color: transparent;
   }
 
-  .bg-dots {
-    background-image: radial-gradient(
-      rgba(148, 163, 184, 0.12) 1px,
-      transparent 1px
-    );
-    background-size: 22px 22px;
+  .text-outline-volt {
+    -webkit-text-stroke: 1px rgba(204, 255, 0, 0.45);
+    color: transparent;
   }
 
   /* Hairline border helper */
   .hairline {
-    @apply border border-ink-700/70;
+    @apply border border-white/10;
+  }
+
+  /* Faint dot texture for section backdrops */
+  .bg-dots {
+    background-image: radial-gradient(
+      rgba(255, 255, 255, 0.07) 1px,
+      transparent 1px
+    );
+    background-size: 24px 24px;
   }
 }
 

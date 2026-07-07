@@ -9,9 +9,10 @@ import { cn } from "@/lib/utils";
 type FormState = "idle" | "submitting" | "success";
 
 const fieldBase =
-  "w-full rounded-xl border border-ink-600 bg-ink-850/80 px-4 py-3 text-sm text-white placeholder:text-slate-500 transition-colors focus:border-signal-500/60 focus:outline-none focus:ring-2 focus:ring-signal-500/25";
+  "w-full border border-white/15 bg-carbon-900 px-4 py-3.5 text-sm text-white placeholder:text-neutral-600 transition-colors focus:border-volt-500 focus:outline-none focus:ring-1 focus:ring-volt-500/40";
 
-const labelBase = "mb-2 block text-sm font-medium text-slate-300";
+const labelBase =
+  "mb-2 block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-400";
 
 export function ContactForm() {
   const [state, setState] = useState<FormState>("idle");
@@ -26,21 +27,21 @@ export function ContactForm() {
 
   if (state === "success") {
     return (
-      <div className="flex flex-col items-center justify-center rounded-3xl border border-signal-500/40 bg-ink-900/60 p-10 text-center backdrop-blur">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-signal-500/15 text-signal-400">
+      <div className="flex flex-col items-center justify-center border border-volt-500/50 bg-carbon-900 p-10 text-center">
+        <span className="flex h-14 w-14 items-center justify-center bg-volt-500/10 text-volt-500">
           <CheckCircle2 className="h-7 w-7" />
         </span>
-        <h3 className="mt-5 text-xl font-semibold text-white">
+        <h3 className="mt-6 font-display text-2xl font-bold uppercase tracking-tight text-white">
           Request received
         </h3>
-        <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-400">
-          Thanks — I&apos;ll review your funnel and reply within one business
+        <p className="mt-3 max-w-sm text-sm leading-relaxed text-neutral-400">
+          Thanks — we&apos;ll review your funnel and reply within one business
           day with next steps and a proposed time to talk.
         </p>
         <Button
           onClick={() => setState("idle")}
           variant="secondary"
-          className="mt-6"
+          className="mt-7"
         >
           Submit another
         </Button>
@@ -51,10 +52,10 @@ export function ContactForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-3xl border border-ink-700/70 bg-ink-900/60 p-6 backdrop-blur sm:p-8"
+      className="border border-white/10 bg-carbon-950 p-6 sm:p-8"
     >
-      <div className="grid gap-5">
-        <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-6">
+        <div className="grid gap-6 sm:grid-cols-2">
           <div>
             <label htmlFor="name" className={labelBase}>
               Full name
@@ -99,15 +100,21 @@ export function ContactForm() {
           />
         </div>
 
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-6 sm:grid-cols-2">
           <div>
             <label htmlFor="type" className={labelBase}>
               Business type
             </label>
-            <select id="type" name="type" required className={cn(fieldBase, "appearance-none")}>
+            <select
+              id="type"
+              name="type"
+              required
+              className={cn(fieldBase, "appearance-none")}
+            >
               <option value="">Select…</option>
-              <option value="saas">Tech / SaaS / App</option>
-              <option value="ecom">D2C / E-commerce</option>
+              <option value="saas">Tech / SaaS / Subscription</option>
+              <option value="ecom">DTC / E-commerce</option>
+              <option value="b2b2c">B2B2C / Marketplace</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -146,7 +153,8 @@ export function ContactForm() {
 
         <div>
           <label htmlFor="message" className={labelBase}>
-            Anything else? <span className="text-slate-600">(optional)</span>
+            Anything else?{" "}
+            <span className="normal-case text-neutral-600">(optional)</span>
           </label>
           <textarea
             id="message"
@@ -176,9 +184,8 @@ export function ContactForm() {
           )}
         </Button>
 
-        <p className="text-center text-xs text-slate-500">
-          Your details stay private. No spam, no sales sequences — just a
-          real reply.
+        <p className="text-center font-mono text-[11px] uppercase tracking-[0.15em] text-neutral-600">
+          Your details stay private. No spam — just a real reply.
         </p>
       </div>
     </form>
