@@ -1,10 +1,18 @@
-# Consultant Portfolio — Growth & CRO
+# Moshe Bajayo — Growth & CRO Portfolio
 
-A high-converting, dark-mode portfolio site for an elite Growth & CRO
-consultant serving two audiences: **Tech/SaaS** and **D2C e-commerce**.
+A high-converting, dark-mode portfolio site for **Moshe Bajayo**, a Growth &
+CRO consultant with 7+ years scaling two audiences: **Tech/SaaS &
+subscription** and **D2C e-commerce** (PepsiCo/SodaStream, Fox Group/Terminal
+X, Office Depot, Lumen).
 
 Built with **Next.js (App Router)**, **TypeScript**, **Tailwind CSS**,
 **Framer Motion**, and **Lucide React**.
+
+> **Content note:** The percentage metrics in `lib/content.ts`
+> (`heroStats`, `audiences`, `caseStudies`) are *representative* of the type
+> of outcome delivered. Swap in exact, verified figures before publishing.
+> The `brands` list drives the "As seen on" logo wall — drop real SVG logos
+> in `/public/logos` to replace the text wordmarks.
 
 ## Getting started
 
@@ -34,7 +42,7 @@ consultant-portfolio/
 ├── components/
 │   ├── ui/                 # Button, Container, Badge, Reveal, SectionHeading
 │   ├── layout/             # Navbar (mobile menu), Footer
-│   └── sections/           # Hero, Clients, AudienceSplit, Framework,
+│   └── sections/           # Hero, AsSeenOn, About, AudienceSplit, Framework,
 │                           #   CaseStudies, CTA, ContactForm
 ├── lib/
 │   ├── content.ts          # 👈 All copy, metrics, packages, FAQs (edit here)

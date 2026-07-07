@@ -31,7 +31,8 @@ export function Hero() {
 
           <Reveal delay={0.1}>
             <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-slate-400 sm:text-xl">
-              I&apos;m {site.name}, a Growth &amp; CRO consultant for{" "}
+              I&apos;m {site.name} — a Growth &amp; CRO leader with 7+ years
+              scaling{" "}
               <strong className="font-semibold text-slate-200">
                 Tech &amp; SaaS
               </strong>{" "}
@@ -39,8 +40,9 @@ export function Hero() {
               <strong className="font-semibold text-slate-200">
                 D2C e-commerce
               </strong>{" "}
-              brands. I find where revenue leaks, then run rigorous experiments
-              that close the gap — measured in dollars, not opinions.
+              for brands like PepsiCo, Fox Group &amp; Lumen. I find where
+              revenue leaks, then run rigorous experiments that close the gap —
+              measured in dollars, not opinions.
             </p>
           </Reveal>
 

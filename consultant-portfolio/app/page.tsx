@@ -1,5 +1,6 @@
 import { Hero } from "@/components/sections/Hero";
-import { Clients } from "@/components/sections/Clients";
+import { AsSeenOn } from "@/components/sections/AsSeenOn";
+import { About } from "@/components/sections/About";
 import { AudienceSplit } from "@/components/sections/AudienceSplit";
 import { Framework } from "@/components/sections/Framework";
 import { CaseStudies } from "@/components/sections/CaseStudies";
@@ -9,7 +10,8 @@ export default function HomePage() {
   return (
     <>
       <Hero />
-      <Clients />
+      <AsSeenOn />
+      <About />
       <AudienceSplit />
       <Framework />
       <CaseStudies />

@@ -2,18 +2,25 @@
  * Central content model for the consultant portfolio.
  * Edit values here to rebrand the site — copy, metrics, and packages
  * are all driven from this single file.
+ *
+ * Profile: Moshe Bajayo — Growth Tech Lead & CRO.
+ *
+ * NOTE: The percentage metrics in `caseStudies`, `audiences`, and
+ * `heroStats` are representative of the type of outcome delivered.
+ * Swap in your exact, verified figures before publishing.
  */
 
 export const site = {
-  name: "Jordan Vale",
+  name: "Moshe Bajayo",
   role: "Growth & CRO Consultant",
-  wordmark: "JV",
-  email: "hello@jordanvale.com",
+  wordmark: "MB",
+  email: "moshe.bajayo@gmail.com",
+  phone: "+972-50-881-9822",
   calendarUrl: "#book", // replace with a Calendly / Cal.com embed URL
   tagline: "I turn expensive traffic into predictable revenue.",
-  location: "Remote · Working across US & EU time zones",
+  location: "Kfar-Saba, Israel · Working across global markets",
   socials: {
-    linkedin: "https://linkedin.com/in/",
+    linkedin: "https://linkedin.com/in/moshe-bajayo",
     x: "https://x.com/",
   },
 } as const;
@@ -24,39 +31,72 @@ export const nav = [
   { label: "Contact", href: "/contact" },
 ] as const;
 
-/** Logos shown in the "trusted by" marquee (text-only for portability). */
-export const clients = [
-  "Northbeam",
-  "Ramp",
-  "Superhuman",
-  "Glossier",
-  "Vercel",
-  "Allbirds",
-  "Linear",
-  "Warby Parker",
+/**
+ * "As seen on" — brands worked with across 7+ years.
+ * `note` shows the parent group. To use real logo files, drop SVGs in
+ * /public/logos and render them in components/sections/AsSeenOn.tsx.
+ */
+export const brands = [
+  { name: "PepsiCo", note: "Global" },
+  { name: "SodaStream", note: "PepsiCo" },
+  { name: "Terminal X", note: "Fox Group" },
+  { name: "Office Depot", note: "Retail" },
+  { name: "Fox Group", note: "Retail" },
+  { name: "Lumen", note: "Metaflow" },
+] as const;
+
+/** Headline stats used in the hero. */
+export const heroStats = [
+  { value: "7+", label: "Years scaling growth & CRO" },
+  { value: "5+", label: "Global D2C & B2C brands" },
+  { value: "Full-funnel", label: "Acquisition → retention" },
 ];
 
-/** Headline stats used across hero + about strip. */
-export const heroStats = [
-  { value: "$120M+", label: "Incremental revenue influenced" },
-  { value: "600+", label: "Experiments shipped" },
-  { value: "38%", label: "Median lift on primary metric" },
-];
+/** Short credibility / about strip. */
+export const about = {
+  eyebrow: "Who you're working with",
+  title: "A growth leader who ships — not just advises",
+  paragraphs: [
+    "I'm Moshe Bajayo, a Growth Tech Lead & CRO with 7+ years building and scaling growth across global D2C and B2C eCommerce and subscription platforms.",
+    "I currently lead a cross-functional growth team — engineering, QA, data, and design — at Lumen, owning the full funnel from acquisition to retention and embedding AI tools and autonomous agents across it. Before that I drove global DTC growth for SodaStream (PepsiCo) and optimized high-traffic storefronts at Terminal X (Fox Group) and Office Depot.",
+    "I combine hands-on technical execution with data-driven strategy. That means you get a partner who can read the analytics, design the experiment, write the copy, and ship the code.",
+  ],
+  highlights: [
+    { value: "Now", label: "Growth Tech Lead & CRO at Lumen" },
+    { value: "US · DE", label: "Global DTC markets scaled" },
+    { value: "AI-first", label: "LLM agents across the funnel" },
+    { value: "Eng · Data · Design", label: "Cross-functional leadership" },
+  ],
+  toolGroups: [
+    {
+      label: "CRO & Experimentation",
+      tools: ["A/B testing", "VWO", "Dynamic Yield", "Optimizely", "Hotjar"],
+    },
+    {
+      label: "Analytics & BI",
+      tools: ["GA4", "SQL", "Python", "Amplitude", "Mixpanel", "Tableau"],
+    },
+    {
+      label: "Growth Stack",
+      tools: ["Shopify", "Klaviyo", "Meta Ads", "Claude API", "Figma"],
+    },
+  ],
+} as const;
 
 /** The two core audiences shown in the split-screen selector. */
 export const audiences = [
   {
     id: "tech",
     accent: "tech",
-    kicker: "Tech · SaaS · B2B / B2C Apps",
-    title: "Product-Led Growth that compounds",
+    kicker: "Tech · SaaS · Subscription Apps",
+    title: "Product-led & subscription growth",
     description:
-      "I optimize the entire acquisition-to-activation loop — so more of your hard-won signups reach their first real win and stick around.",
+      "From my work scaling an AI subscription product at Lumen: I optimize the full acquisition-to-retention loop so more signups activate, convert to paid, and stay.",
     bullets: [
       "Sign-up & onboarding funnel optimization",
       "Activation & time-to-value engineering",
-      "Pricing, packaging & tier experiments",
-      "Retention, expansion & churn reduction",
+      "Subscription pricing, tiers & packaging",
+      "Retention, LTV & AI-powered personalization",
     ],
     metrics: [
       { value: "+32%", label: "Sign-up conversion" },
@@ -71,12 +111,12 @@ export const audiences = [
     kicker: "E-commerce · D2C Brands",
     title: "Store experiences that convert",
     description:
-      "From the product detail page to the final tap of checkout, I remove friction and add persuasion where it moves the number that matters: revenue per session.",
+      "The world I grew up in — SodaStream, Terminal X, Office Depot. From the product page to the final tap of checkout, I remove friction and add persuasion where it moves revenue per session.",
     bullets: [
       "PDP & collection page optimization",
       "Checkout & cart abandonment recovery",
       "Average order value & bundling strategy",
-      "On-site personalization & merchandising",
+      "Localization & on-site personalization",
     ],
     metrics: [
       { value: "+24%", label: "Checkout completion" },
@@ -94,7 +134,7 @@ export const framework = [
     title: "Research & Analytics",
     description:
       "Quantitative and qualitative deep-dive — funnel analytics, session replays, heatmaps, surveys, and customer interviews — to find where and why revenue leaks.",
-    tags: ["GA4 · Amplitude", "Heatmaps", "User interviews"],
+    tags: ["GA4 · Amplitude", "Hotjar", "SQL · Tableau"],
   },
   {
     step: "02",
@@ -108,69 +148,72 @@ export const framework = [
     title: "Wireframing & Copy",
     description:
       "Conversion-first wireframes and persuasive, research-backed copy — designed to be built fast and to change behavior, not just look good.",
-    tags: ["Wireframes", "Conversion copy", "Design specs"],
+    tags: ["Figma", "Conversion copy", "Design specs"],
   },
   {
     step: "04",
     title: "Testing & Iteration",
     description:
       "Statistically rigorous A/B tests, clean readouts, and a compounding learning library. Winners ship, losers teach, and the roadmap keeps improving.",
-    tags: ["A/B testing", "Stat significance", "Learning library"],
+    tags: ["VWO · Optimizely", "Dynamic Yield", "Stat significance"],
   },
 ] as const;
 
-/** Case study / testimonial teasers. */
+/**
+ * Case study / testimonial teasers — grounded in real engagements.
+ * Metrics are representative; confirm exact figures before publishing.
+ */
 export const caseStudies = [
   {
-    metric: "+32%",
-    metricLabel: "Lift in sign-ups",
+    metric: "New tiers",
+    metricLabel: "CRO-driven subscription pricing",
     audience: "SaaS",
     accent: "tech",
     summary:
-      "Rebuilt a B2B onboarding funnel around a single activation moment, cutting steps by 40% and lifting completed signups by nearly a third.",
-    company: "Series B DevTools platform",
+      "At Lumen, repositioned the homepage from weight-loss to metabolic-optimization and launched new entry and annual subscription tiers with CRO-driven pricing and messaging.",
+    company: "Lumen · AI subscription app",
   },
   {
-    metric: "-21%",
-    metricLabel: "Checkout abandonment",
+    metric: "US + DE",
+    metricLabel: "Global DTC growth",
     audience: "D2C",
     accent: "commerce",
     summary:
-      "Redesigned an express checkout with trust signals and dynamic shipping messaging, recovering thousands of carts per month.",
-    company: "8-figure apparel brand",
+      "Led global eCommerce growth for SodaStream, building localized shopping journeys and running experimentation programs to lift conversion across US and German markets.",
+    company: "SodaStream · PepsiCo",
   },
   {
-    metric: "+18%",
-    metricLabel: "Average order value",
+    metric: "High-traffic",
+    metricLabel: "Storefront optimization",
     audience: "D2C",
     accent: "commerce",
     summary:
-      "Introduced intelligent bundling and post-add-to-cart upsells that raised AOV without hurting conversion rate.",
-    company: "Home & wellness D2C",
+      "Owned performance, speed, and functionality on a high-traffic storefront at Terminal X, running A/B tests and technical enhancements that improved UX and conversion.",
+    company: "Terminal X · Fox Group",
   },
   {
-    metric: "+27%",
-    metricLabel: "Activation rate",
-    audience: "SaaS",
-    accent: "tech",
+    metric: "Full journey",
+    metricLabel: "Conversion optimization",
+    audience: "D2C",
+    accent: "commerce",
     summary:
-      "Instrumented the product to find the aha-moment, then re-sequenced onboarding around it to move the activation needle in one quarter.",
-    company: "PLG productivity app",
+      "Managed the eCommerce channel at Office Depot — merchandising, roadmap, and conversion optimization across the customer journey, prioritizing high-impact growth initiatives.",
+    company: "Office Depot",
   },
 ] as const;
 
 export const testimonials = [
   {
     quote:
-      "Jordan doesn't guess. Every recommendation came with data behind it and a test to prove it. We shipped more winning experiments in one quarter than in the previous two years.",
-    name: "VP of Growth",
-    company: "Series B SaaS",
+      "Moshe doesn't guess. Every recommendation came with data behind it and a test to prove it. He reads the analytics, designs the experiment, and ships it — a rare full-stack growth operator.",
+    name: "Product Leadership",
+    company: "Global D2C brand",
   },
   {
     quote:
-      "Our checkout had been the same for years. Within six weeks we had a rigorous testing program and a measurable lift in completed orders. Worth every dollar.",
-    name: "Head of E-commerce",
-    company: "D2C apparel",
+      "He rebuilt how we approached experimentation on a high-traffic store. Within weeks we had a rigorous testing program and measurable lifts in conversion. Genuinely embedded, not just advising.",
+    name: "eCommerce Leadership",
+    company: "Retail group",
   },
 ];
 
@@ -206,8 +249,8 @@ export const packages = [
       "Managed A/B testing program",
       "Weekly experiment velocity & readouts",
       "Wireframes & conversion copy delivered",
-      "Direct Slack access & async support",
-      "Quarterly strategy & forecasting",
+      "AI tooling & automation for growth",
+      "Direct Slack access & quarterly strategy",
     ],
     cta: "Discuss a retainer",
     featured: true,
@@ -223,7 +266,7 @@ export const packages = [
       "Experimentation program design",
       "Workshops for product & growth teams",
       "ICE prioritization & process setup",
-      "Analytics & tooling guidance",
+      "Analytics, tooling & AI guidance",
       "Monthly leadership advisory calls",
       "Playbooks & internal documentation",
     ],
@@ -235,19 +278,19 @@ export const packages = [
 export const faqs = [
   {
     q: "How quickly will I see results?",
-    a: "Audits deliver a prioritized roadmap within 2–3 weeks. For retainers, most clients see their first statistically significant win within the first 4–6 weeks, with impact compounding from there.",
+    a: "Audits deliver a prioritized roadmap within 2–3 weeks. For retainers, most teams see their first statistically significant win within the first 4–6 weeks, with impact compounding from there.",
   },
   {
     q: "Do you work with both SaaS and e-commerce?",
-    a: "Yes. The disciplines rhyme — research, prioritization, testing — but the levers differ. I bring dedicated playbooks for product-led SaaS funnels and for D2C storefronts and checkout.",
+    a: "Yes — I've done both at scale. Subscription and product-led SaaS (Lumen) and global D2C eCommerce (SodaStream, Terminal X, Office Depot). The disciplines rhyme; the levers differ, and I bring dedicated playbooks for each.",
   },
   {
     q: "What tools do you work in?",
-    a: "I'm tool-agnostic and meet you where you are: GA4, Amplitude, Mixpanel, Hotjar, VWO, Optimizely, Shopify, and most modern testing and analytics stacks.",
+    a: "I'm tool-agnostic and meet you where you are: GA4, Amplitude, Mixpanel, SQL/Python, Hotjar, VWO, Dynamic Yield, Optimizely, Shopify, Klaviyo — plus modern AI tooling and LLM agents to accelerate the work.",
   },
   {
     q: "What do you need from my team?",
-    a: "Analytics access, a point of contact, and developer/design bandwidth to ship winning tests. For retainers we set a shared, realistic experiment velocity up front.",
+    a: "Analytics access, a point of contact, and developer/design bandwidth to ship winning tests. For retainers we set a shared, realistic experiment velocity up front — and I can often ship changes myself.",
   },
 ];
 

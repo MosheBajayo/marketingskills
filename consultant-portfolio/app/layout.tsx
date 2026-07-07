@@ -25,8 +25,8 @@ export const metadata: Metadata = {
     template: `%s | ${site.name}`,
   },
   description:
-    "Elite Growth & CRO consulting for Tech/SaaS and D2C e-commerce brands. Turn expensive traffic into predictable revenue with rigorous experimentation.",
-  metadataBase: new URL("https://jordanvale.com"),
+    "Moshe Bajayo — Growth & CRO consultant with 7+ years scaling Tech/SaaS and D2C e-commerce for brands like PepsiCo, Fox Group, and Lumen. Turn expensive traffic into predictable revenue with rigorous experimentation.",
+  metadataBase: new URL("https://moshebajayo.com"),
   keywords: [
     "CRO consultant",
     "conversion rate optimization",

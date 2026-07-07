@@ -23,8 +23,8 @@ export function CaseStudies() {
         <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
           <SectionHeading
             eyebrow="Proof, not promises"
-            title="Results that show up on the P&L"
-            description="A sample of the outcomes from recent SaaS and D2C engagements. Every number came from a controlled test."
+            title="Selected engagements"
+            description="A sample of real work across SaaS/subscription and global D2C. Specific performance figures shared on request or under NDA."
           />
           <Reveal delay={0.1}>
             <Button href="/contact" variant="secondary" className="shrink-0">
