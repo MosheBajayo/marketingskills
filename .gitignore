@@ -24,3 +24,6 @@ node_modules/
 .idea/
 .vscode/
 .vercel
+
+# Client raw data exports (PII-safe handling — see clients/README.md)
+clients/*/raw/
